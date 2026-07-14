@@ -8,6 +8,12 @@ clean, readable code over cleverness.
 
 Next.js 14+ App Router · Tailwind CSS · shadcn/ui · TypeScript · Anthropic API · FAL.ai · Vercel
 
+**Current state:** early scaffold. Only `create-next-app` defaults plus installed shadcn components
+(`src/components/ui/`) exist so far — `/app/actions/`, `lib/anthropic.ts`, `lib/fal.ts`, `lib/prompts.ts`,
+and `types/index.ts` described below are the target structure, not yet built. A related sandbox repo,
+`personalprojects/scenelab-api-test`, has working smoke-test scripts for the FAL.ai calls (FLUX.2 Pro,
+Kling 1.6) to port in when building `lib/fal.ts`.
+
 ## Commands
 
 - `npm run dev` — start dev server
