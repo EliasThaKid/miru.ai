@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { generateScenes } from '@/app/actions/generate-scenes'
 import { generateSceneImage } from '@/app/actions/generate-image'
+import { generateSceneVideo } from '@/app/actions/generate-scene-video'
 import { SceneCard } from '@/components/scene-card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -42,6 +43,9 @@ export default function Home() {
 
   const [generatingImageIds, setGeneratingImageIds] = useState<Set<string>>(new Set())
   const [imageErrors, setImageErrors] = useState<Record<string, string>>({})
+
+  const [generatingVideoIds, setGeneratingVideoIds] = useState<Set<string>>(new Set())
+  const [videoErrors, setVideoErrors] = useState<Record<string, string>>({})
 
   // localStorage isn't available during SSR, so this can't be a lazy useState initializer
   // without causing a hydration mismatch — it has to run post-mount, client-only.
@@ -99,6 +103,33 @@ export default function Home() {
     }
 
     setGeneratingImageIds((prev) => {
+      const next = new Set(prev)
+      next.delete(scene.id)
+      return next
+    })
+  }
+
+  async function handleAnimateScene(scene: Scene) {
+    setGeneratingVideoIds((prev) => new Set(prev).add(scene.id))
+    setVideoErrors((prev) => ({ ...prev, [scene.id]: '' }))
+
+    const result = await generateSceneVideo(scene)
+
+    if (result.ok) {
+      setProject((prev) => ({
+        ...prev,
+        scenes: prev.scenes.map((s) =>
+          s.id === scene.id
+            ? { ...s, videoUrl: result.videoUrl, videoPrompt: result.videoPrompt, videoGeneratedAt: new Date().toISOString() }
+            : s
+        ),
+        updatedAt: new Date().toISOString(),
+      }))
+    } else {
+      setVideoErrors((prev) => ({ ...prev, [scene.id]: result.error }))
+    }
+
+    setGeneratingVideoIds((prev) => {
       const next = new Set(prev)
       next.delete(scene.id)
       return next
@@ -164,6 +195,9 @@ export default function Home() {
               isGenerating={generatingImageIds.has(scene.id)}
               error={imageErrors[scene.id] || null}
               onGenerateImage={() => handleGenerateImage(scene)}
+              isGeneratingVideo={generatingVideoIds.has(scene.id)}
+              videoError={videoErrors[scene.id] || null}
+              onAnimateScene={() => handleAnimateScene(scene)}
             />
           ))}
         </div>

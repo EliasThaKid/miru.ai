@@ -6,7 +6,8 @@ import type { Scene } from '@/types'
 
 // Kling 1.6 typically takes 2-5 minutes (per test-kling.js); default Server Action /
 // serverless timeouts are far shorter, so this needs an explicit extension.
-export const maxDuration = 300
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const maxDuration = 300
 
 export type GenerateVideoResult =
   | { ok: true; videoUrl: string; videoPrompt: string }
