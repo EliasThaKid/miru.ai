@@ -13,6 +13,10 @@ import { Textarea } from '@/components/ui/textarea'
 import { loadProject, saveProject } from '@/lib/storage'
 import type { Project, Scene, StylePreset } from '@/types'
 
+// Extends the Server Action timeout for this page — Kling 1.6 (generateSceneVideo)
+// typically takes 2-5 minutes; the other actions on this page finish in seconds.
+export const maxDuration = 300
+
 const STYLE_PRESETS: { value: StylePreset; label: string }[] = [
   { value: 'cinematic', label: 'Cinematic' },
   { value: 'anime', label: 'Anime' },

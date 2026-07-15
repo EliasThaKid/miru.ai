@@ -4,10 +4,11 @@ import { animateScene } from '@/lib/fal'
 import { buildVideoPrompt } from '@/lib/prompts'
 import type { Scene } from '@/types'
 
-// Kling 1.6 typically takes 2-5 minutes (per test-kling.js); default Server Action /
-// serverless timeouts are far shorter, so this needs an explicit extension.
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-const maxDuration = 300
+// Kling 1.6 typically takes 2-5 minutes (per test-kling.js); default Server Action
+// timeouts are far shorter. Next.js only recognizes `maxDuration` as route segment
+// config in page.tsx/layout.tsx/route.ts — not in an action file itself (a 'use server'
+// file may only export async functions) — so the extension is set in page.tsx instead,
+// where it applies to every Server Action used on that page.
 
 export type GenerateVideoResult =
   | { ok: true; videoUrl: string; videoPrompt: string }
