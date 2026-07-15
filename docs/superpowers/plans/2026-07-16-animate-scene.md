@@ -168,6 +168,17 @@ export async function generateSceneVideo(scene: Scene): Promise<GenerateVideoRes
 }
 ```
 
+> **Correction (discovered during Task 5):** `export const maxDuration = 300` in this
+> file was wrong and does not work — a `'use server'` file may only export async
+> functions, so this non-function export broke the whole module ("no exports at all"
+> at build time). Per Next.js's own docs, `maxDuration` is only valid in
+> `layout.tsx`/`page.tsx`/`route.ts`, and for Server Actions must be set "at the page
+> level to change the default timeout of all Server Actions used on the page" — so it
+> belongs in `page.tsx`, not here. The code block above is left as originally planned
+> for historical accuracy; the actual implementation omits the `maxDuration` line from
+> this file and adds `export const maxDuration = 300` to `miru/src/app/page.tsx`
+> instead (see Task 5's amendment below).
+
 - [ ] **Step 2: Verify the build and lint are clean**
 
 Run: `cd miru && npm run build`
@@ -375,6 +386,12 @@ with:
               onAnimateScene={() => handleAnimateScene(scene)}
             />
 ```
+
+> **Amendment (see Task 3's correction note):** also add, near the top of `page.tsx`
+> after the imports, `export const maxDuration = 300` with a one-line comment
+> explaining it extends the timeout for every Server Action used on this page
+> (Kling 1.6 needs it; the other two actions finish in seconds regardless). This
+> belongs here rather than in `generate-scene-video.ts` itself.
 
 - [ ] **Step 5: Verify the build and lint are clean**
 
