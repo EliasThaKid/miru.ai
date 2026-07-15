@@ -8,11 +8,24 @@ clean, readable code over cleverness.
 
 Next.js 14+ App Router · Tailwind CSS · shadcn/ui · TypeScript · Anthropic API · FAL.ai · Vercel
 
-**Current state:** early scaffold. Only `create-next-app` defaults plus installed shadcn components
-(`src/components/ui/`) exist so far — `/app/actions/`, `lib/anthropic.ts`, `lib/fal.ts`, `lib/prompts.ts`,
-and `types/index.ts` described below are the target structure, not yet built. A related sandbox repo,
-`personalprojects/scenelab-api-test`, has working smoke-test scripts for the FAL.ai calls (FLUX.2 Pro,
-Kling 1.6) to port in when building `lib/fal.ts`.
+**Current state:** Week 1 vertical slice is done and verified live (script in → scene breakdown
+→ one image out): `types/index.ts`, `lib/anthropic.ts`, `lib/fal.ts`, `lib/prompts.ts`,
+`app/actions/generate-scenes.ts`, `app/actions/generate-image.ts`, `components/scene-card.tsx`,
+and a minimal Screen 1 in `app/page.tsx` all exist and work end to end. `lib/storage.ts` also
+persists the active `Project` to localStorage (load-on-mount, save-on-change) so state survives
+a refresh. A related sandbox repo, `personalprojects/scenelab-api-test`, has the smoke-test
+scripts these were ported from.
+
+**Not yet built:**
+- Full storyboard editor (Screen 3): scene reordering, editing descriptions, per-scene
+  regenerate, "Generate All Images" with the cost estimate.
+- Video generation ("Animate Scene", Kling 1.6) — per-scene, opt-in.
+- Chain Transition (Kling O3 Standard) — **still not smoke-tested**; write and run a test
+  script in `scenelab-api-test/` first, same pattern as `test-flux.js`, before wiring any
+  Server Action to it.
+- Animatic preview (Screen 4) and export (Screen 5: PDF via jsPDF+html2canvas, zip via JSZip).
+- Design pass on Screen 1 (currently functional but unstyled) — the Superdesign skill is
+  set up for this (`.claude/skills/superdesign`) if/when a polish pass is wanted.
 
 ## Commands
 
@@ -31,16 +44,16 @@ Kling 1.6) to port in when building `lib/fal.ts`.
 
 ## File structure conventions
 
-- `/app/actions/` — Server Actions only (scene breakdown, image gen, video gen)
+- `/app/actions/` — Server Actions only (scene breakdown, image gen, video gen, chain transition)
 - `/components/` — all React components. Never put components directly in `/app`.
 - `/lib/` — API clients and helpers (`lib/anthropic.ts`, `lib/fal.ts`, `lib/prompts.ts`)
-- `/types/index.ts` — all shared types (`Scene`, `Project`, `ShotType`, `StylePreset`)
+- `/types/index.ts` — all shared types (`Scene`, `Project`, `Transition`, `ShotType`, `StylePreset`)
 - `/public/demo/` — pre-cached demo project assets
 
 ## Data model
 
-Source of truth is `/types/index.ts`. Don't redefine `Scene` or `Project` shapes inline
-elsewhere — import them. Current shape:
+Source of truth is `/types/index.ts`. Don't redefine `Scene`, `Project`, or `Transition` shapes
+inline elsewhere — import them. Current shape:
 
 ```typescript
 type ShotType = 'wide' | 'medium' | 'close-up' | 'pov' | 'over-the-shoulder'
@@ -60,6 +73,15 @@ interface Scene {
   videoGeneratedAt: string | null
 }
 
+interface Transition {
+  id: string
+  fromSceneId: string          // Scene.id of the earlier scene
+  toSceneId: string            // Scene.id of the next scene — must be adjacent
+  videoUrl: string | null      // Kling O3 Standard output
+  transitionPrompt: string | null
+  generatedAt: string | null
+}
+
 interface Project {
   id: string
   title: string
@@ -67,6 +89,7 @@ interface Project {
   characterDescription: string
   stylePreset: StylePreset
   scenes: Scene[]
+  transitions: Transition[]   // sparse — only populated for chained adjacent pairs
   createdAt: string
   updatedAt: string
 }
@@ -84,6 +107,14 @@ interface Project {
 - Video generation (FAL.ai Kling 1.6): always opt-in per scene, triggered only by explicit
   "Animate Scene" click. Never auto-triggered on image generation. If `scene.videoUrl`
   already exists, return it instantly — do not re-call the API.
+- Chain Transition (FAL.ai Kling O3 Standard, dual-keyframe): a separate endpoint from
+  "Animate Scene" — do not assume they share a client call shape or param names. Always
+  opt-in, always between two *adjacent* scenes that both already have generated images.
+  Never auto-triggered. Reuses existing `imageUrl`s — no new image generation cost. If a
+  `Transition` already exists for that scene pair, return it instantly rather than
+  re-calling the API. Confirm the exact input schema (`image_url`, `end_image_url`, etc.)
+  against current FAL docs before wiring the Server Action — endpoint slugs and params
+  shift between Kling versions.
 - Every AI call must handle failure with a human-readable, user-facing error and a retry
   option. No silent failures, no unhandled promise rejections.
 
@@ -91,14 +122,15 @@ interface Project {
 
 - Comment only where something non-obvious is happening. Don't narrate straightforward code.
 - Regeneration (image or video) touches only the single scene object — never re-run the
-  full pipeline for a per-scene action.
+  full pipeline for a per-scene action. Same rule applies to Chain Transition: regenerating
+  one transition never touches the scenes' images or any other transition.
 - Cost-sensitive actions ("Generate All Images") should show an estimate before running.
 
 ## Don't touch
 
-- `/public/demo/` — pre-cached demo project (images + videoUrls). This is what makes the
-  Stew demo run at $0 cost with zero live API calls. Do not regenerate, overwrite, or "clean up"
-  these assets without explicit confirmation.
+- `/public/demo/` — pre-cached demo project (images, videoUrls, and transition videoUrls).
+  This is what makes the Stew demo run at $0 cost with zero live API calls. Do not
+  regenerate, overwrite, or "clean up" these assets without explicit confirmation.
 - `.env.local` — never read, print, log, or commit contents. Keys: `ANTHROPIC_API_KEY`, `FAL_KEY`.
 
 ## Scope discipline
@@ -106,4 +138,7 @@ interface Project {
 This repo has a locked MVP scope (see project brief). If a task requests something outside
 Screens 1–5 as specced (script input → processing → storyboard editor → animatic preview →
 export), flag it as a scope expansion and confirm before building it. Do not add auth,
-a database, social publishing, or full-project (non-per-scene) video generation.
+a database, social publishing, or full-project (non-per-scene, non-adjacent-pair) video
+generation. Chain Transition is in scope as specced above — opt-in, adjacent scene pairs
+only. Do not extend it to auto-chain an entire project or generate transitions for
+non-adjacent scenes without explicit confirmation.
