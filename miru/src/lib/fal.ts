@@ -23,3 +23,23 @@ export async function generateImage(prompt: string): Promise<string> {
 
   return url
 }
+
+// Endpoint and duration ported as-is from the smoke-tested
+// personalprojects/scenelab-api-test/test-kling.js — do not guess a new slug or param shape.
+export async function animateScene(imageUrl: string, motionPrompt: string): Promise<string> {
+  const result = await fal.subscribe('fal-ai/kling-video/v1.6/standard/image-to-video', {
+    input: {
+      prompt: motionPrompt,
+      image_url: imageUrl,
+      duration: '5',
+    },
+    logs: false,
+  })
+
+  const url = result.data?.video?.url
+  if (!url) {
+    throw new Error('Video generation failed — no video was returned. Please try again.')
+  }
+
+  return url
+}
