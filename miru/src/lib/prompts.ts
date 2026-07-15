@@ -33,3 +33,18 @@ export function buildImagePrompt(
     'vertical 9:16 composition, portrait orientation, Instagram Reels format, no text or watermarks',
   ].join('. ')
 }
+
+const SHOT_MOTION: Record<ShotType, string> = {
+  wide: 'slow cinematic push-in, subtle environmental movement in the background, gentle camera drift. Cinematic, smooth, 5 seconds.',
+  medium: 'gentle handheld movement, subject breathing, natural micro-motion. Cinematic, smooth, 5 seconds.',
+  'close-up': 'subtle facial micro-expression, natural blinking and breathing, minimal camera movement, shallow focus holds steady. Cinematic, smooth, 5 seconds.',
+  pov: 'handheld drift matching natural head movement, subtle parallax between foreground and background. Cinematic, smooth, 5 seconds.',
+  'over-the-shoulder': 'gentle handheld movement, foreground figure stays anchored, subject in the background breathes and shifts naturally. Cinematic, smooth, 5 seconds.',
+}
+
+// Motion mapping ported from personalprojects/scenelab-api-test/test-kling.js for 'medium'
+// (the only confirmed value); the other four shot types were drafted to match its tone and
+// approved during design review (docs/superpowers/specs/2026-07-16-animate-scene-design.md).
+export function buildVideoPrompt(shotType: ShotType, description: string): string {
+  return [SHOT_MOTION[shotType], description].join('. ')
+}
