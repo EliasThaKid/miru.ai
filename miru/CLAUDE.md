@@ -1,5 +1,9 @@
 @AGENTS.md
 
+> **Agent delegation policy:** see the repo-root `CLAUDE.md` (Token-Efficient Agent
+> Delegation Policy). Default is 0 subagents; subagent-driven-development only on explicit
+> user request by name. That policy overrides any plan-doc or skill workflow suggestion.
+
 # SCENELAB
 
 Script-to-storyboard and animatic generator for short-form content creators.
@@ -8,24 +12,37 @@ clean, readable code over cleverness.
 
 Next.js 14+ App Router · Tailwind CSS · shadcn/ui · TypeScript · Anthropic API · FAL.ai · Vercel
 
-**Current state:** Week 1 vertical slice is done and verified live (script in → scene breakdown
-→ one image out): `types/index.ts`, `lib/anthropic.ts`, `lib/fal.ts`, `lib/prompts.ts`,
-`app/actions/generate-scenes.ts`, `app/actions/generate-image.ts`, `components/scene-card.tsx`,
-and a minimal Screen 1 in `app/page.tsx` all exist and work end to end. `lib/storage.ts` also
-persists the active `Project` to localStorage (load-on-mount, save-on-change) so state survives
-a refresh. A related sandbox repo, `personalprojects/scenelab-api-test`, has the smoke-test
-scripts these were ported from.
+**Current state:** Week 1 vertical slice plus Animate Scene are done and verified live
+(script in → scene breakdown → per-scene image → per-scene Kling 1.6 video):
+`types/index.ts`, `lib/anthropic.ts`, `lib/fal.ts`, `lib/prompts.ts` (image + video prompt
+builders), `app/actions/{generate-scenes,generate-image,generate-scene-video}.ts`,
+`components/scene-card.tsx` (image display, Animate Scene button, native `<video>` playback),
+and Screen 1 in `app/page.tsx` all work end to end against the real APIs. `lib/storage.ts`
+persists the active `Project` to localStorage (load-on-mount, save-on-change) so state
+survives a refresh. Note: `maxDuration = 300` lives in `page.tsx`, not the action file — a
+`'use server'` module may only export async functions; page-level placement is the documented
+Next.js mechanism for extending Server Action timeouts. Design docs live in
+`docs/superpowers/{specs,plans}/`. A related sandbox repo,
+`personalprojects/scenelab-api-test`, has the smoke-test scripts the FAL calls were ported from.
 
 **Not yet built:**
+- Chain Transition (Kling O3 Standard) — next up, but **still not smoke-tested**; write and
+  run a test script in `scenelab-api-test/` first (same pattern as `test-flux.js`) before
+  wiring any Server Action to it.
+- Animatic preview (Screen 4) and export (Screen 5: PDF via jsPDF+html2canvas, zip via JSZip).
 - Full storyboard editor (Screen 3): scene reordering, editing descriptions, per-scene
   regenerate, "Generate All Images" with the cost estimate.
-- Video generation ("Animate Scene", Kling 1.6) — per-scene, opt-in.
-- Chain Transition (Kling O3 Standard) — **still not smoke-tested**; write and run a test
-  script in `scenelab-api-test/` first, same pattern as `test-flux.js`, before wiring any
-  Server Action to it.
-- Animatic preview (Screen 4) and export (Screen 5: PDF via jsPDF+html2canvas, zip via JSZip).
+- Character-description AI assist (Claude-powered refinement loop for the character field) —
+  approved idea, parked as its own future sub-project; treat as in-scope when picked up.
 - Design pass on Screen 1 (currently functional but unstyled) — the Superdesign skill is
   set up for this (`.claude/skills/superdesign`) if/when a polish pass is wanted.
+
+**Known deferred cleanups (from the Animate Scene code review, all Minor):**
+- "Generate Storyboard" stays clickable while a generation is in flight; clicking it replaces
+  all scene ids and orphans any in-flight (paid) video result. Fix: disable it while
+  `generatingImageIds`/`generatingVideoIds` are non-empty.
+- `handleGenerateImage`/`handleAnimateScene` in `page.tsx` are structurally parallel — extract
+  a shared helper only when Chain Transition adds a third instance, not before.
 
 ## Commands
 
