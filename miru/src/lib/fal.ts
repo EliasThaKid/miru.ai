@@ -26,7 +26,7 @@ export async function generateImage(prompt: string): Promise<string> {
 
 // Endpoint and duration ported as-is from the smoke-tested
 // personalprojects/scenelab-api-test/test-kling.js — do not guess a new slug or param shape.
-export async function animateScene(imageUrl: string, motionPrompt: string): Promise<string> {
+export async function animateMoment(imageUrl: string, motionPrompt: string): Promise<string> {
   const result = await fal.subscribe('fal-ai/kling-video/v1.6/standard/image-to-video', {
     input: {
       prompt: motionPrompt,
@@ -39,6 +39,33 @@ export async function animateScene(imageUrl: string, motionPrompt: string): Prom
   const url = result.data?.video?.url
   if (!url) {
     throw new Error('Video generation failed — no video was returned. Please try again.')
+  }
+
+  return url
+}
+
+// Endpoint and params ported as-is from the smoke-tested
+// personalprojects/scenelab-api-test/test-kling-transition.js (validated live 2026-07-16,
+// ~60s on Standard tier) — do not guess a new slug or param shape.
+export async function generateBridge(
+  startImageUrl: string,
+  endImageUrl: string,
+  transitionPrompt: string
+): Promise<string> {
+  const result = await fal.subscribe('fal-ai/kling-video/o3/standard/image-to-video', {
+    input: {
+      image_url: startImageUrl,
+      end_image_url: endImageUrl,
+      prompt: transitionPrompt,
+      duration: '5',
+      generate_audio: false,
+    },
+    logs: false,
+  })
+
+  const url = result.data?.video?.url
+  if (!url) {
+    throw new Error('Bridge generation failed — no video was returned. Please try again.')
   }
 
   return url

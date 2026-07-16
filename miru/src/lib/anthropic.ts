@@ -1,13 +1,14 @@
 import type { ShotType } from '@/types'
 
-// Ported from personalprojects/scenelab-api-test/test-scene-breakdown.js — this prompt
-// has been iterated on and validated against varied scripts (fast-paced, dialogue-heavy,
-// twist-reveal, very-short, very-dense, talking-head). Do not rewrite it.
-const SYSTEM_PROMPT = `You are a professional storyboard artist and script supervisor. Given a short-form video script, break it into 8-12 scenes. Each scene represents a distinct visual moment. Return ONLY valid JSON - no explanation, no markdown, no code fences.
+// Ported from personalprojects/scenelab-api-test/test-scene-breakdown.js and revised
+// 2026-07-17 for the moments rebrand (scenes→moments, durations 2-5→2-10). The revision
+// was re-validated against the sandbox test script before shipping. Do not rewrite the
+// prompt beyond validated changes.
+const SYSTEM_PROMPT = `You are a professional storyboard artist and script supervisor. Given a short-form video script, break it into 8-12 moments — the distinct visual beats that together form one continuous scene. Return ONLY valid JSON - no explanation, no markdown, no code fences.
 
 Schema:
 {
-  "scenes": [
+  "moments": [
     {
       "number": 1,
       "shotType": "wide | medium | close-up | pov | over-the-shoulder",
@@ -18,9 +19,9 @@ Schema:
 }
 
 Rules:
-- durationSeconds must be 2-5. Vary it based on scene complexity and emotional weight.
+- durationSeconds must be 2-10. Size each moment by its content: a quick action beat runs 2-3 seconds; a lingering emotional or atmospheric beat can run up to 10.
 - Descriptions must be visual and specific. Not 'she looks sad' - 'a young woman stares out a rain-streaked window, her reflection ghostly against the dark street below.'
-- First scene must be a strong visual hook.
+- First moment must be a strong visual hook.
 - Distribute shot types naturally across the breakdown.
 - Never return anything outside the JSON object.
 - Do not wrap the JSON in a code block (no \`\`\`json or \`\`\`). Your entire response must be the raw JSON object, starting with { and ending with }.`
@@ -29,15 +30,15 @@ const RETRY_REMINDER = 'Return ONLY the JSON object. No explanation, no markdown
 
 const VALID_SHOT_TYPES: ShotType[] = ['wide', 'medium', 'close-up', 'pov', 'over-the-shoulder']
 
-export interface SceneBreakdownScene {
+export interface BreakdownMoment {
   number: number
   shotType: ShotType
   description: string
   durationSeconds: number
 }
 
-export interface SceneBreakdownResult {
-  scenes: SceneBreakdownScene[]
+export interface MomentBreakdownResult {
+  moments: BreakdownMoment[]
 }
 
 async function callClaude(script: string, retry: boolean): Promise<string> {
@@ -73,9 +74,7 @@ async function callClaude(script: string, retry: boolean): Promise<string> {
   return data.content.find((block: { type: string }) => block.type === 'text')?.text ?? ''
 }
 
-// This model rejects assistant-turn prefill (400: "does not support assistant message
-// prefill"), so we can't force the response to start with "{". Instead, strip a wrapping
-// ```json ... ``` fence if the model adds one anyway.
+// Strip a wrapping ```json ... ``` fence if the model adds one despite the prompt.
 function stripCodeFence(text: string): string {
   const fenced = text.trim().match(/^```(?:json)?\s*([\s\S]*?)\s*```$/)
   return fenced ? fenced[1] : text
@@ -83,26 +82,26 @@ function stripCodeFence(text: string): string {
 
 function validate(data: unknown): string[] {
   const errors: string[] = []
-  const sceneData = data as SceneBreakdownResult
+  const breakdown = data as MomentBreakdownResult
 
-  if (!sceneData.scenes || !Array.isArray(sceneData.scenes)) {
-    errors.push('Missing or invalid "scenes" array')
+  if (!breakdown.moments || !Array.isArray(breakdown.moments)) {
+    errors.push('Missing or invalid "moments" array')
     return errors
   }
 
-  if (sceneData.scenes.length > 12) {
-    errors.push(`Scene count ${sceneData.scenes.length} exceeds the 12-scene cap`)
+  if (breakdown.moments.length > 12) {
+    errors.push(`Moment count ${breakdown.moments.length} exceeds the 12-moment cap`)
   }
 
-  sceneData.scenes.forEach((scene, i) => {
-    const label = `Scene ${scene.number ?? i + 1}`
-    if (!VALID_SHOT_TYPES.includes(scene.shotType)) {
-      errors.push(`${label}: invalid shotType "${scene.shotType}"`)
+  breakdown.moments.forEach((moment, i) => {
+    const label = `Moment ${moment.number ?? i + 1}`
+    if (!VALID_SHOT_TYPES.includes(moment.shotType)) {
+      errors.push(`${label}: invalid shotType "${moment.shotType}"`)
     }
-    if (typeof scene.durationSeconds !== 'number' || scene.durationSeconds < 2 || scene.durationSeconds > 5) {
-      errors.push(`${label}: durationSeconds ${scene.durationSeconds} outside 2-5 range`)
+    if (typeof moment.durationSeconds !== 'number' || moment.durationSeconds < 2 || moment.durationSeconds > 10) {
+      errors.push(`${label}: durationSeconds ${moment.durationSeconds} outside 2-10 range`)
     }
-    if (!scene.description || scene.description.length < 20) {
+    if (!moment.description || moment.description.length < 20) {
       errors.push(`${label}: description missing or too short`)
     }
   })
@@ -110,7 +109,7 @@ function validate(data: unknown): string[] {
   return errors
 }
 
-export async function breakdownScenes(script: string): Promise<SceneBreakdownResult> {
+export async function breakdownMoments(script: string): Promise<MomentBreakdownResult> {
   let rawText = await callClaude(script, false)
 
   let parsed: unknown
@@ -122,14 +121,14 @@ export async function breakdownScenes(script: string): Promise<SceneBreakdownRes
     try {
       parsed = JSON.parse(stripCodeFence(rawText))
     } catch {
-      throw new Error("We couldn't generate a scene breakdown from that script. Please try again.")
+      throw new Error("We couldn't generate a moment breakdown from that script. Please try again.")
     }
   }
 
   const errors = validate(parsed)
   if (errors.length > 0) {
-    throw new Error("We couldn't generate a valid scene breakdown from that script. Please try again.")
+    throw new Error("We couldn't generate a valid moment breakdown from that script. Please try again.")
   }
 
-  return parsed as SceneBreakdownResult
+  return parsed as MomentBreakdownResult
 }

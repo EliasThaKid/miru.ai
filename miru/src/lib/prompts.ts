@@ -48,3 +48,25 @@ const SHOT_MOTION: Record<ShotType, string> = {
 export function buildVideoPrompt(shotType: ShotType, description: string): string {
   return [SHOT_MOTION[shotType], description].join('. ')
 }
+
+const BRIDGE_FALLBACK =
+  'Natural minimal movement connects the first frame to the second frame. Subtle subject motion and restrained camera movement. Maintain visual and spatial continuity.'
+
+// Generated-bridge prompt (Kling O3 dual-keyframe). Motion leads; the two static moment
+// descriptions ride along as labeled context only — the supplied frames already carry
+// appearance, composition, and style. The optional user-written bridgeDirection replaces
+// the conservative fallback; no Claude call is involved in building this prompt.
+export function buildTransitionPrompt(
+  fromDescription: string,
+  toDescription: string,
+  bridgeDirection?: string | null
+): string {
+  return [
+    'Begin exactly from the first supplied frame.',
+    bridgeDirection?.trim() || BRIDGE_FALLBACK,
+    'Motion progresses naturally and continuously toward the second supplied frame.',
+    `Context — first frame: ${fromDescription}`,
+    `Second frame: ${toDescription}`,
+    'Preserve character identity, facial features, clothing, object identity, lighting, environment, and spatial continuity. Use restrained cinematic camera movement. End exactly on the second supplied frame. No morphing, melting, object substitution, teleportation, sudden identity changes, extra limbs, extra subjects, text, or unmotivated scene transformation. 5 seconds.',
+  ].join(' ')
+}

@@ -1,7 +1,13 @@
 export type ShotType = 'wide' | 'medium' | 'close-up' | 'pov' | 'over-the-shoulder'
 export type StylePreset = 'anime' | 'cinematic' | 'illustrated' | 'hyper-realistic'
 
-export interface Scene {
+// Editorial connection between two adjacent moments. 'hard-cut' is the default and
+// costs nothing; 'generated-bridge' is an explicit AI generation (Kling O3 dual-keyframe).
+// Future editorial modes (dissolve, fade, wipe) extend this union.
+export type ConnectionMode = 'hard-cut' | 'generated-bridge'
+
+// A moment is one visual beat of the single continuous scene a Project represents.
+export interface Moment {
   id: string
   number: number
   shotType: ShotType
@@ -17,10 +23,14 @@ export interface Scene {
 
 export interface Transition {
   id: string
-  fromSceneId: string
-  toSceneId: string
+  fromMomentId: string          // Moment.id of the earlier moment
+  toMomentId: string            // Moment.id of the next moment — must be adjacent
+  mode: ConnectionMode
+  // Generated-bridge fields. videoUrl is KEPT when mode flips back to 'hard-cut' so a
+  // paid generation is never discarded; absence of a Transition record means Hard Cut.
   videoUrl: string | null
   transitionPrompt: string | null
+  bridgeDirection: string | null
   generatedAt: string | null
 }
 
@@ -30,8 +40,8 @@ export interface Project {
   script: string
   characterDescription: string
   stylePreset: StylePreset
-  scenes: Scene[]
-  transitions: Transition[]
+  moments: Moment[]
+  transitions: Transition[]   // sparse — only pairs the user has touched
   createdAt: string
   updatedAt: string
 }
