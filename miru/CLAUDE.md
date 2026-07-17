@@ -62,8 +62,14 @@ disabled while anything generates (a fresh breakdown would orphan in-flight paid
 - 10-second moment clips: Kling 1.6 accepts `duration: '10'` but it is **not smoke-tested**;
   moments longer than 5s currently still get 5s clips. Same test gate as everything else
   before mapping `durationSeconds` to it.
-- Design pass on Screen 1 (currently functional but unstyled) — the Superdesign skill is
-  set up for this (`.claude/skills/superdesign`) if/when a polish pass is wanted.
+**Design (Superdesign pass, 2026-07-18):** the app ships the **Dark Editing Studio**
+direction — `dark` class on `<html>` in `layout.tsx`, using the `.dark` token block in
+`globals.css` as the validated palette (the Superdesign draft's palette matched it
+exactly). Fully neutral OKLCH grayscale; the only color is `--destructive` for errors.
+Drafts live in the SCENELAB Superdesign project (baseline reproduction + dark studio +
+bright editorial alternates) for future iterations; `.superdesign/` holds the refreshed
+init analysis and `design-system.md`. Do not reintroduce a light default without a
+deliberate design decision.
 
 **Known deferred cleanups (all Minor):**
 - `handleGenerateImage`/`handleAnimateMoment`/`handleGenerateBridge` in `page.tsx` share a
