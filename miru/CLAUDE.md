@@ -36,8 +36,14 @@ are skipped. Play/pause preserves the current hold's remaining time; the timer e
 StrictMode-safe (single owner, cleanup banks elapsed time). Base UI note: `SelectValue`
 renders the raw value, so both selects pass the label as children explicitly.
 
+**Export (Screen 5) — shipped.** `components/export-controls.tsx` + `lib/export.ts`, pure
+client-side: an A4 storyboard PDF (cover page + two 9:16 frames per page with shot metadata
+and descriptions, composed directly with jsPDF — html2canvas turned out unnecessary since
+we build from image data rather than screenshotting DOM) and a JSZip image zip
+(`moment-NN.jpg`). Only moments with images are included. Note: jsPDF's built-in fonts are
+latin-1, so exported text is sanitized (em dashes, curly quotes) in `lib/export.ts`.
+
 **Not yet built:**
-- Export (Screen 5): PDF via jsPDF+html2canvas, zip via JSZip.
 - Full storyboard editor (Screen 3): moment reordering, editing descriptions, per-moment
   regenerate, "Generate All Images" with the cost estimate.
 - Future connection modes: wipes, match-cut planning, and J/L-cuts (need audio).
@@ -74,7 +80,7 @@ renders the raw value, so both selects pass the label as children explicitly.
 - No database. No auth. Persistence is localStorage only.
 - All AI calls (Claude + FAL.ai) go through Server Actions in `/app/actions/`. Never call
   Anthropic or FAL.ai directly from a client component.
-- PDF export (jsPDF + html2canvas) and image zip (JSZip) are pure client-side — no server involvement.
+- PDF export (jsPDF) and image zip (JSZip) are pure client-side — no server involvement.
 - Video playback is a native `<video>` tag. No FFmpeg, no Remotion, no server-side rendering of video.
 - Connections are editorial-first: a Hard Cut is the default state of every adjacent pair,
   costs nothing, and requires no record. AI generation (Generated Bridge) is the explicit,

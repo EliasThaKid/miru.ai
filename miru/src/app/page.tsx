@@ -6,6 +6,7 @@ import { generateMomentImage } from '@/app/actions/generate-image'
 import { generateMomentVideo } from '@/app/actions/generate-moment-video'
 import { generateBridgeVideo } from '@/app/actions/generate-bridge'
 import { AnimaticPlayer } from '@/components/animatic-player'
+import { ExportControls } from '@/components/export-controls'
 import { MomentCard } from '@/components/moment-card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -310,18 +311,21 @@ export default function Home() {
       </div>
 
       {project.moments.some((m) => m.imageUrl) ? (
-        showAnimatic ? (
-          <AnimaticPlayer
-            // Remount when content changes so the timeline rebuilds.
-            key={project.updatedAt}
-            project={project}
-            onClose={() => setShowAnimatic(false)}
-          />
-        ) : (
-          <Button variant="secondary" onClick={() => setShowAnimatic(true)}>
-            Preview Animatic
-          </Button>
-        )
+        <div className="flex flex-col gap-3">
+          {showAnimatic ? (
+            <AnimaticPlayer
+              // Remount when content changes so the timeline rebuilds.
+              key={project.updatedAt}
+              project={project}
+              onClose={() => setShowAnimatic(false)}
+            />
+          ) : (
+            <Button variant="secondary" onClick={() => setShowAnimatic(true)}>
+              Preview Animatic
+            </Button>
+          )}
+          <ExportControls project={project} />
+        </div>
       ) : null}
 
       {project.moments.length > 0 ? (
