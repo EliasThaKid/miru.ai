@@ -128,3 +128,28 @@
     @apply font-sans;
   }
 }
+/* Animatic player: slow Ken Burns drift for still-image moments, and the dissolve
+   crossfade for incoming entries. Durations are set inline per entry. */
+@keyframes animatic-kenburns {
+  from {
+    transform: scale(1) translate(0, 0);
+  }
+  to {
+    transform: scale(1.08) translate(-1.5%, 1%);
+  }
+}
+
+.animatic-kenburns {
+  animation-name: animatic-kenburns;
+  animation-timing-function: linear;
+  animation-fill-mode: both;
+}
+
+@keyframes animatic-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}

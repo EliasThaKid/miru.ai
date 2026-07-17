@@ -6,8 +6,16 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
 import type { ConnectionMode, Moment, Transition } from '@/types'
+
+const CONNECTION_MODES: { value: ConnectionMode; label: string }[] = [
+  { value: 'hard-cut', label: 'Hard Cut' },
+  { value: 'dissolve', label: 'Dissolve' },
+  { value: 'fade-to-black', label: 'Fade to Black' },
+  { value: 'generated-bridge', label: 'Generated Bridge ✦ AI' },
+]
 
 interface MomentCardProps {
   moment: Moment
@@ -45,6 +53,8 @@ export function MomentCard({
   // Absence of a Transition record means the default: Hard Cut.
   const activeMode: ConnectionMode = transition?.mode ?? 'hard-cut'
   const canBridge = Boolean(moment.imageUrl && nextMoment?.imageUrl)
+  const bridgeSelected = activeMode === 'generated-bridge'
+  const bridgeReady = Boolean(transition?.videoUrl)
 
   return (
     <Card>
@@ -92,56 +102,54 @@ export function MomentCard({
           <div className="flex w-full flex-col gap-2 border-t pt-3">
             <p className="text-xs font-medium">Connection to Moment {nextMoment.number}</p>
 
-            {activeMode === 'hard-cut' ? (
-              <>
-                <p className="text-xs text-muted-foreground">Type: Hard Cut — instant, no generation</p>
-                {transition?.videoUrl ? (
+            <Select value={activeMode} onValueChange={(value) => onSetConnectionMode(value as ConnectionMode)}>
+              <SelectTrigger className="w-full" size="sm">
+                {/* Base UI's SelectValue renders the raw value; show the label instead. */}
+                <SelectValue>{CONNECTION_MODES.find((m) => m.value === activeMode)?.label}</SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {CONNECTION_MODES.map((m) => (
+                  <SelectItem key={m.value} value={m.value}>
+                    {m.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {bridgeSelected ? (
+              bridgeReady ? (
+                <video
+                  src={transition?.videoUrl ?? undefined}
+                  controls
+                  className="aspect-9/16 w-full rounded-2xl object-cover"
+                />
+              ) : (
+                <>
+                  <Input
+                    value={bridgeDirection}
+                    onChange={(e) => setBridgeDirection(e.target.value)}
+                    placeholder="Bridge direction (optional), e.g. she lowers her hand, camera tracks right"
+                    disabled={isGeneratingBridge}
+                  />
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => onSetConnectionMode('generated-bridge')}
+                    onClick={() => onGenerateBridge(bridgeDirection)}
+                    disabled={!canBridge || isGeneratingBridge}
                     className="w-full"
                   >
-                    Use Generated Bridge
+                    {isGeneratingBridge ? 'Generating bridge… (~1-2 min)' : 'Generate Bridge ✦ AI'}
                   </Button>
-                ) : (
-                  <>
-                    <Input
-                      value={bridgeDirection}
-                      onChange={(e) => setBridgeDirection(e.target.value)}
-                      placeholder="Bridge direction (optional), e.g. she lowers her hand, camera tracks right"
-                      disabled={isGeneratingBridge}
-                    />
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => onGenerateBridge(bridgeDirection)}
-                      disabled={!canBridge || isGeneratingBridge}
-                      className="w-full"
-                    >
-                      {isGeneratingBridge ? 'Generating bridge… (~1-2 min)' : 'Generate Bridge ✦ AI'}
-                    </Button>
-                    {!canBridge && (
-                      <p className="text-xs text-muted-foreground">Both moments need images first.</p>
-                    )}
-                  </>
-                )}
-              </>
+                  {!canBridge && <p className="text-xs text-muted-foreground">Both moments need images first.</p>}
+                </>
+              )
             ) : (
-              <>
-                <p className="text-xs text-muted-foreground">Type: Generated Bridge ✦ AI</p>
-                {transition?.videoUrl ? (
-                  <video src={transition.videoUrl} controls className="aspect-9/16 w-full rounded-2xl object-cover" />
-                ) : null}
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => onSetConnectionMode('hard-cut')}
-                  className="w-full"
-                >
-                  Use Hard Cut instead (bridge is kept)
-                </Button>
-              </>
+              <p className="text-xs text-muted-foreground">
+                {activeMode === 'hard-cut'
+                  ? 'Instant editorial cut — free, no generation.'
+                  : 'Deterministic playback effect — free, no generation.'}
+                {bridgeReady ? ' A generated bridge is saved for this pair.' : ''}
+              </p>
             )}
 
             {bridgeError ? <p className="text-xs text-destructive">{bridgeError}</p> : null}

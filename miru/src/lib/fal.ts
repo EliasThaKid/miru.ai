@@ -44,6 +44,18 @@ export async function animateMoment(imageUrl: string, motionPrompt: string): Pro
   return url
 }
 
+// Uploads a browser-captured frame (JPEG data URL) to FAL storage and returns a fetchable
+// https URL. Used when a bridge must start from the final frame of an animated moment —
+// FAL keyframe params want a URL, and storage upload keeps the queue payload small.
+export async function uploadFrame(dataUrl: string): Promise<string> {
+  const base64 = dataUrl.split(',')[1]
+  if (!base64) {
+    throw new Error('Frame upload failed — the captured frame was empty. Please try again.')
+  }
+  const blob = new Blob([Buffer.from(base64, 'base64')], { type: 'image/jpeg' })
+  return fal.storage.upload(blob)
+}
+
 // Endpoint and params ported as-is from the smoke-tested
 // personalprojects/scenelab-api-test/test-kling-transition.js (validated live 2026-07-16,
 // ~60s on Standard tier) — do not guess a new slug or param shape.

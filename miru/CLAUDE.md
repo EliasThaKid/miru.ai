@@ -27,15 +27,22 @@ is the documented Next.js mechanism for extending Server Action timeouts. Design
 has the smoke-test scripts every FAL call and the breakdown prompt were validated against
 (FLUX, Kling 1.6, Kling O3, and the 2026-07-17 moments-prompt revision).
 
+**Animatic preview (Screen 4) — shipped.** In-page player (`components/animatic-player.tsx`,
+opened via "Preview Animatic"): flattens moments + connections into a timeline; animated
+moments play their clips, still moments hold for `durationSeconds` with a subtle Ken Burns
+drift (CSS keyframes in `globals.css`); generated bridges play between their pair; dissolve
+and fade-to-black are deterministic CSS effects (never Kling calls). Moments without images
+are skipped. Play/pause preserves the current hold's remaining time; the timer effect is
+StrictMode-safe (single owner, cleanup banks elapsed time). Base UI note: `SelectValue`
+renders the raw value, so both selects pass the label as children explicitly.
+
 **Not yet built:**
-- Animatic preview (Screen 4) and export (Screen 5: PDF via jsPDF+html2canvas, zip via JSZip).
-  The animatic places connection artifacts (bridges, and later dissolves/fades) *between*
-  moments on the timeline.
+- Export (Screen 5): PDF via jsPDF+html2canvas, zip via JSZip.
 - Full storyboard editor (Screen 3): moment reordering, editing descriptions, per-moment
   regenerate, "Generate All Images" with the cost estimate.
-- Future connection modes: dissolve/crossfade and fade-to-black are *deterministic* editor
-  effects for the animatic/export pipeline — never Kling calls. Match-cut planning, wipes,
-  and J/L-cuts (need audio) are further out. `ConnectionMode` is the extension point.
+- Future connection modes: wipes, match-cut planning, and J/L-cuts (need audio).
+  `ConnectionMode` is the extension point; new deterministic modes belong in the animatic
+  player's timeline builder, never in a Kling call.
 - Bridge style presets (Handheld continuous, Slow push, Slow lateral track, etc.) mapping to
   deterministic prompt text — deferred; the free-text bridge-direction field covers the MVP.
   Default remains the conservative "Subtle continuous" fallback. Never add a "morph" preset.
@@ -154,8 +161,15 @@ interface Project {
   `imageUrl`s — no new image cost. If a `Transition` with a `videoUrl` exists for the pair,
   return it instantly. Prompts via `buildTransitionPrompt()` — motion-first (user's optional
   bridge direction, or the conservative fallback), with the two moment descriptions as
-  labeled context only; no Claude call is involved.
-- Hard Cut is not an AI call: selecting it must make zero network requests.
+  labeled context only; no Claude call is involved. **Frame continuity:** if the "from"
+  moment is animated, the bridge starts from its clip's *final frame* (captured client-side
+  via canvas in `lib/extract-frame.ts` — not FFmpeg — then uploaded via `fal.storage`), so
+  playback never jumps back to the still image. The "to" side always uses the moment's
+  image: a bridge ends exactly where that moment's own animation begins. Known limitation:
+  a bridge generated *before* the from-moment was animated is not invalidated afterwards
+  (idempotent reuse wins); regeneration support is future work.
+- Hard Cut, Dissolve, and Fade to Black are not AI calls: selecting any of them must make
+  zero network requests. Dissolve/fade are rendered by the animatic player at playback time.
 - Every AI call must handle failure with a human-readable, user-facing error and a retry
   option. No silent failures, no unhandled promise rejections.
 
