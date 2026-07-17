@@ -41,12 +41,12 @@ export interface MomentBreakdownResult {
   moments: BreakdownMoment[]
 }
 
-async function callClaude(script: string, retry: boolean): Promise<string> {
+async function callClaude(system: string, userContent: string, retry: boolean): Promise<string> {
   // This model rejects assistant-turn prefill (400: "does not support assistant message
   // prefill"), so the retry reminder is sent as a plain user message, not a forced "{" start.
   const messages = retry
-    ? [{ role: 'user' as const, content: `${script}\n\n${RETRY_REMINDER}` }]
-    : [{ role: 'user' as const, content: script }]
+    ? [{ role: 'user' as const, content: `${userContent}\n\n${RETRY_REMINDER}` }]
+    : [{ role: 'user' as const, content: userContent }]
 
   const key = process.env.ANTHROPIC_API_KEY
 
@@ -60,7 +60,7 @@ async function callClaude(script: string, retry: boolean): Promise<string> {
     body: JSON.stringify({
       model: 'claude-sonnet-4-6',
       max_tokens: 2000,
-      system: SYSTEM_PROMPT,
+      system,
       messages,
     }),
   })
@@ -109,21 +109,28 @@ function validate(data: unknown): string[] {
   return errors
 }
 
-export async function breakdownMoments(script: string): Promise<MomentBreakdownResult> {
-  let rawText = await callClaude(script, false)
-
-  let parsed: unknown
+// Shared call-parse-retry flow: one retry with an explicit "JSON only" reminder before
+// surfacing a human-readable error.
+async function callAndParse(system: string, userContent: string, failureMessage: string): Promise<unknown> {
+  let rawText = await callClaude(system, userContent, false)
   try {
-    parsed = JSON.parse(stripCodeFence(rawText))
+    return JSON.parse(stripCodeFence(rawText))
   } catch {
-    // One retry with an explicit "JSON only" reminder before surfacing an error.
-    rawText = await callClaude(script, true)
+    rawText = await callClaude(system, userContent, true)
     try {
-      parsed = JSON.parse(stripCodeFence(rawText))
+      return JSON.parse(stripCodeFence(rawText))
     } catch {
-      throw new Error("We couldn't generate a moment breakdown from that script. Please try again.")
+      throw new Error(failureMessage)
     }
   }
+}
+
+export async function breakdownMoments(script: string): Promise<MomentBreakdownResult> {
+  const parsed = await callAndParse(
+    SYSTEM_PROMPT,
+    script,
+    "We couldn't generate a moment breakdown from that script. Please try again."
+  )
 
   const errors = validate(parsed)
   if (errors.length > 0) {
@@ -131,4 +138,41 @@ export async function breakdownMoments(script: string): Promise<MomentBreakdownR
   }
 
   return parsed as MomentBreakdownResult
+}
+
+// Ported from personalprojects/scenelab-api-test/test-character-refine.js — validated
+// 2026-07-18 (5/5 runs: attribute preservation, length bounds, no style-word leakage).
+const REFINE_SYSTEM_PROMPT = `You are a character designer for AI-generated storyboards. Given a video script and the user's character description, rewrite the description so the same character renders consistently across many independently generated frames. Return ONLY valid JSON - no explanation, no markdown, no code fences.
+
+Schema:
+{
+  "refined": "The rewritten character description",
+  "notes": ["1-3 short notes explaining what you added or tightened and why"]
+}
+
+Rules:
+- Preserve every concrete visual attribute the user gave (age, hair, clothing, colors, species, features). Never contradict or drop one.
+- Add only what improves cross-frame consistency: approximate age, hair style/color, one or two wardrobe items with colors, overall palette, and at most one distinguishing feature. Prefer details the script implies; invent as little as possible.
+- Write the refined description as comma-separated visual descriptors, 25-60 words, third person, no name required.
+- Visual facts only: no backstory, personality, camera directions, or art-style words (no "anime", "photorealistic", "cinematic" - the app adds style separately).
+- notes must be brief and user-facing (they explain the changes to a non-expert).
+- Never return anything outside the JSON object. Do not wrap the JSON in a code block. Your entire response must be the raw JSON object, starting with { and ending with }.`
+
+export interface CharacterRefinement {
+  refined: string
+  notes: string[]
+}
+
+export async function refineCharacter(script: string, description: string): Promise<CharacterRefinement> {
+  const parsed = (await callAndParse(
+    REFINE_SYSTEM_PROMPT,
+    `Script:\n${script}\n\nUser's character description:\n${description}`,
+    "We couldn't refine the character description. Please try again."
+  )) as CharacterRefinement
+
+  if (typeof parsed.refined !== 'string' || !parsed.refined.trim() || !Array.isArray(parsed.notes)) {
+    throw new Error("We couldn't refine the character description. Please try again.")
+  }
+
+  return { refined: parsed.refined.trim(), notes: parsed.notes.slice(0, 4) }
 }

@@ -62,8 +62,6 @@ disabled while anything generates (a fresh breakdown would orphan in-flight paid
 - 10-second moment clips: Kling 1.6 accepts `duration: '10'` but it is **not smoke-tested**;
   moments longer than 5s currently still get 5s clips. Same test gate as everything else
   before mapping `durationSeconds` to it.
-- Character-description AI assist (Claude-powered refinement loop for the character field) —
-  approved idea, parked as its own future sub-project; treat as in-scope when picked up.
 - Design pass on Screen 1 (currently functional but unstyled) — the Superdesign skill is
   set up for this (`.claude/skills/superdesign`) if/when a polish pass is wanted.
 
@@ -179,6 +177,12 @@ interface Project {
   image: a bridge ends exactly where that moment's own animation begins. Known limitation:
   a bridge generated *before* the from-moment was animated is not invalidated afterwards
   (idempotent reuse wins); regeneration support is future work.
+- Character refinement ("Refine with AI ✦" on the character field): Claude rewrites the
+  user's description into a visual-consistency descriptor (attributes preserved, 25-60
+  words, no style words — the style preset is added separately by `buildImagePrompt`) plus
+  user-facing notes. Always suggest-then-accept — never overwrite the field without an
+  explicit "Use this" click. Prompt validated in
+  `scenelab-api-test/test-character-refine.js` (2026-07-18); revise there first.
 - Hard Cut, Dissolve, and Fade to Black are not AI calls: selecting any of them must make
   zero network requests. Dissolve/fade are rendered by the animatic player at playback time.
 - Every AI call must handle failure with a human-readable, user-facing error and a retry

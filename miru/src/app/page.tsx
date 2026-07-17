@@ -5,6 +5,7 @@ import { generateMoments } from '@/app/actions/generate-moments'
 import { generateMomentImage } from '@/app/actions/generate-image'
 import { generateMomentVideo } from '@/app/actions/generate-moment-video'
 import { generateBridgeVideo } from '@/app/actions/generate-bridge'
+import { refineCharacterDescription } from '@/app/actions/refine-character'
 import { AnimaticPlayer } from '@/components/animatic-player'
 import { ExportControls } from '@/components/export-controls'
 import { MomentCard } from '@/components/moment-card'
@@ -68,6 +69,10 @@ export default function Home() {
   const [bridgeErrors, setBridgeErrors] = useState<Record<string, string>>({})
 
   const [showAnimatic, setShowAnimatic] = useState(false)
+
+  const [isRefining, setIsRefining] = useState(false)
+  const [refineSuggestion, setRefineSuggestion] = useState<{ refined: string; notes: string[] } | null>(null)
+  const [refineError, setRefineError] = useState<string | null>(null)
 
   // 'idle' → button; 'confirm' → inline cost estimate; 'running' → sequential generation.
   const [generateAllState, setGenerateAllState] = useState<'idle' | 'confirm' | 'running'>('idle')
@@ -238,6 +243,22 @@ export default function Home() {
     })
   }
 
+  async function handleRefineCharacter() {
+    setIsRefining(true)
+    setRefineError(null)
+    setRefineSuggestion(null)
+
+    const result = await refineCharacterDescription(project.script, project.characterDescription)
+
+    if (result.ok) {
+      setRefineSuggestion({ refined: result.refined, notes: result.notes })
+    } else {
+      setRefineError(result.error)
+    }
+
+    setIsRefining(false)
+  }
+
   // Swaps a moment with its neighbor and renumbers. Transitions are keyed by moment-id
   // pairs, so records for pairs that stop being adjacent simply stop matching — and revive
   // if the order is restored.
@@ -347,6 +368,46 @@ export default function Home() {
             onChange={(e) => setProject((prev) => ({ ...prev, characterDescription: e.target.value }))}
             placeholder="e.g. a young woman in her late 20s, dark bob haircut, oversized cream sweater"
           />
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleRefineCharacter}
+            disabled={isRefining || (!project.script.trim() && !project.characterDescription.trim())}
+            className="self-start"
+          >
+            {isRefining ? 'Refining…' : 'Refine with AI ✦'}
+          </Button>
+          {refineError ? <p className="text-xs text-destructive">{refineError}</p> : null}
+          {refineSuggestion ? (
+            <div className="flex flex-col gap-2 rounded-2xl border p-3">
+              <p className="text-sm">{refineSuggestion.refined}</p>
+              {refineSuggestion.notes.length > 0 ? (
+                <ul className="flex list-disc flex-col gap-1 pl-4 text-xs text-muted-foreground">
+                  {refineSuggestion.notes.map((note, i) => (
+                    <li key={i}>{note}</li>
+                  ))}
+                </ul>
+              ) : null}
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  onClick={() => {
+                    setProject((prev) => ({
+                      ...prev,
+                      characterDescription: refineSuggestion.refined,
+                      updatedAt: new Date().toISOString(),
+                    }))
+                    setRefineSuggestion(null)
+                  }}
+                >
+                  Use this
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => setRefineSuggestion(null)}>
+                  Keep mine
+                </Button>
+              </div>
+            </div>
+          ) : null}
         </div>
 
         <div className="flex flex-col gap-1.5">
