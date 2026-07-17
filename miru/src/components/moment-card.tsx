@@ -8,6 +8,7 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/componen
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
+import { Textarea } from '@/components/ui/textarea'
 import type { ConnectionMode, Moment, Transition } from '@/types'
 
 const CONNECTION_MODES: { value: ConnectionMode; label: string }[] = [
@@ -31,6 +32,12 @@ interface MomentCardProps {
   bridgeError: string | null
   onGenerateBridge: (bridgeDirection: string) => void
   onSetConnectionMode: (mode: ConnectionMode) => void
+  canMoveUp: boolean
+  canMoveDown: boolean
+  onMove: (direction: -1 | 1) => void
+  onUpdateDescription: (description: string) => void
+  onRegenerateImage: () => void
+  onReAnimate: () => void
 }
 
 export function MomentCard({
@@ -47,8 +54,16 @@ export function MomentCard({
   bridgeError,
   onGenerateBridge,
   onSetConnectionMode,
+  canMoveUp,
+  canMoveDown,
+  onMove,
+  onUpdateDescription,
+  onRegenerateImage,
+  onReAnimate,
 }: MomentCardProps) {
   const [bridgeDirection, setBridgeDirection] = useState('')
+  const [isEditing, setIsEditing] = useState(false)
+  const [draftDescription, setDraftDescription] = useState('')
 
   // Absence of a Transition record means the default: Hard Cut.
   const activeMode: ConnectionMode = transition?.mode ?? 'hard-cut'
@@ -61,11 +76,67 @@ export function MomentCard({
       <CardHeader>
         <CardTitle className="flex items-center justify-between gap-2">
           <span>Moment {moment.number}</span>
-          <Badge variant="outline">{moment.shotType}</Badge>
+          <span className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              onClick={() => onMove(-1)}
+              disabled={!canMoveUp}
+              aria-label="Move moment up"
+            >
+              ↑
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              onClick={() => onMove(1)}
+              disabled={!canMoveDown}
+              aria-label="Move moment down"
+            >
+              ↓
+            </Button>
+            <Badge variant="outline">{moment.shotType}</Badge>
+          </span>
         </CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
-        <p className="text-sm text-muted-foreground">{moment.description}</p>
+        {isEditing ? (
+          <>
+            <Textarea
+              value={draftDescription}
+              onChange={(e) => setDraftDescription(e.target.value)}
+              rows={4}
+              aria-label="Edit moment description"
+            />
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                onClick={() => {
+                  if (draftDescription.trim()) onUpdateDescription(draftDescription.trim())
+                  setIsEditing(false)
+                }}
+                disabled={!draftDescription.trim()}
+              >
+                Save
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => setIsEditing(false)}>
+                Cancel
+              </Button>
+            </div>
+          </>
+        ) : (
+          <button
+            type="button"
+            className="text-left text-sm text-muted-foreground hover:text-foreground"
+            title="Click to edit description"
+            onClick={() => {
+              setDraftDescription(moment.description)
+              setIsEditing(true)
+            }}
+          >
+            {moment.description}
+          </button>
+        )}
         <p className="text-xs text-muted-foreground">{moment.durationSeconds}s</p>
 
         {isGeneratingImage || isGeneratingVideo ? (
@@ -96,6 +167,31 @@ export function MomentCard({
           <Button onClick={onAnimateMoment} disabled={isGeneratingVideo} className="w-full">
             {isGeneratingVideo ? 'Animating… (~2-5 min)' : 'Animate Moment'}
           </Button>
+        )}
+        {moment.imageUrl && (
+          <div className="flex w-full gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={onRegenerateImage}
+              disabled={isGeneratingImage || isGeneratingVideo}
+              className="flex-1"
+              title="Replaces this moment's image; its animation (if any) is cleared since it was made from the old image"
+            >
+              {isGeneratingImage ? 'Regenerating…' : 'Regenerate Image'}
+            </Button>
+            {moment.videoUrl && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={onReAnimate}
+                disabled={isGeneratingImage || isGeneratingVideo}
+                className="flex-1"
+              >
+                {isGeneratingVideo ? 'Animating…' : 'Re-Animate'}
+              </Button>
+            )}
+          </div>
         )}
 
         {nextMoment && (

@@ -28,6 +28,10 @@ const STYLE_PRESETS: { value: StylePreset; label: string }[] = [
   { value: 'hyper-realistic', label: 'Hyper-Realistic' },
 ]
 
+// Ballpark FLUX cost per image for the "Generate All" estimate — labeled "~" in the UI;
+// check current fal.ai pricing if precision starts to matter.
+const ESTIMATED_COST_PER_IMAGE_USD = 0.04
+
 const EMPTY_PROJECT: Project = {
   id: '',
   title: '',
@@ -64,6 +68,10 @@ export default function Home() {
   const [bridgeErrors, setBridgeErrors] = useState<Record<string, string>>({})
 
   const [showAnimatic, setShowAnimatic] = useState(false)
+
+  // 'idle' → button; 'confirm' → inline cost estimate; 'running' → sequential generation.
+  const [generateAllState, setGenerateAllState] = useState<'idle' | 'confirm' | 'running'>('idle')
+  const [generateAllProgress, setGenerateAllProgress] = useState({ done: 0, total: 0 })
 
   // localStorage isn't available during SSR, so this can't be a lazy useState initializer
   // without causing a hydration mismatch — it has to run post-mount, client-only.
@@ -230,6 +238,64 @@ export default function Home() {
     })
   }
 
+  // Swaps a moment with its neighbor and renumbers. Transitions are keyed by moment-id
+  // pairs, so records for pairs that stop being adjacent simply stop matching — and revive
+  // if the order is restored.
+  function handleMoveMoment(index: number, direction: -1 | 1) {
+    setProject((prev) => {
+      const target = index + direction
+      if (target < 0 || target >= prev.moments.length) return prev
+      const moments = [...prev.moments]
+      ;[moments[index], moments[target]] = [moments[target], moments[index]]
+      return {
+        ...prev,
+        moments: moments.map((m, i) => ({ ...m, number: i + 1 })),
+        updatedAt: new Date().toISOString(),
+      }
+    })
+  }
+
+  // Edits keep the existing image/animation (now possibly stale) — regeneration is the
+  // user's explicit choice, per the per-moment cost rules.
+  function handleUpdateDescription(momentId: string, description: string) {
+    setProject((prev) => ({
+      ...prev,
+      moments: prev.moments.map((m) => (m.id === momentId ? { ...m, description } : m)),
+      updatedAt: new Date().toISOString(),
+    }))
+  }
+
+  // Regenerating an image also clears the moment's animation — it was made from the old
+  // image and would no longer match. Passing imageUrl: null bypasses the action's
+  // return-existing idempotency check.
+  async function handleRegenerateImage(moment: Moment) {
+    setProject((prev) => ({
+      ...prev,
+      moments: prev.moments.map((m) =>
+        m.id === moment.id ? { ...m, videoUrl: null, videoPrompt: null, videoGeneratedAt: null } : m
+      ),
+      updatedAt: new Date().toISOString(),
+    }))
+    await handleGenerateImage({ ...moment, imageUrl: null, imagePrompt: null })
+  }
+
+  async function handleReAnimate(moment: Moment) {
+    await handleAnimateMoment({ ...moment, videoUrl: null, videoPrompt: null })
+  }
+
+  // Sequential only (rate-spike rule). No cancel mid-run — each image lands as it finishes.
+  async function handleGenerateAll() {
+    const pending = project.moments.filter((m) => !m.imageUrl)
+    if (pending.length === 0) return
+    setGenerateAllState('running')
+    setGenerateAllProgress({ done: 0, total: pending.length })
+    for (const moment of pending) {
+      await handleGenerateImage(moment)
+      setGenerateAllProgress((p) => ({ ...p, done: p.done + 1 }))
+    }
+    setGenerateAllState('idle')
+  }
+
   // Hard Cut is the default: selecting it with no record stays record-free. Any other mode
   // creates the pair's record on first selection. Switching modes only flips `mode` — a
   // previously generated bridge's videoUrl is always kept. Never a network request.
@@ -303,7 +369,19 @@ export default function Home() {
           </Select>
         </div>
 
-        <Button onClick={handleGenerateStoryboard} disabled={!project.script.trim() || isGeneratingMoments}>
+        <Button
+          onClick={handleGenerateStoryboard}
+          disabled={
+            !project.script.trim() ||
+            isGeneratingMoments ||
+            // A fresh breakdown replaces all moment ids, which would orphan any in-flight
+            // (paid) generation — block it while anything is generating.
+            generatingImageIds.size > 0 ||
+            generatingVideoIds.size > 0 ||
+            generatingBridgeIds.size > 0 ||
+            generateAllState === 'running'
+          }
+        >
           {isGeneratingMoments ? 'Generating…' : 'Generate Storyboard'}
         </Button>
 
@@ -325,6 +403,36 @@ export default function Home() {
             </Button>
           )}
           <ExportControls project={project} />
+        </div>
+      ) : null}
+
+      {project.moments.some((m) => !m.imageUrl) ? (
+        <div className="flex flex-col gap-2">
+          {generateAllState === 'confirm' ? (
+            <div className="flex items-center gap-2">
+              <p className="flex-1 text-sm text-muted-foreground">
+                {project.moments.filter((m) => !m.imageUrl).length} images ≈ $
+                {(project.moments.filter((m) => !m.imageUrl).length * ESTIMATED_COST_PER_IMAGE_USD).toFixed(2)} —
+                generate sequentially?
+              </p>
+              <Button size="sm" onClick={handleGenerateAll}>
+                Confirm
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => setGenerateAllState('idle')}>
+                Cancel
+              </Button>
+            </div>
+          ) : (
+            <Button
+              variant="outline"
+              onClick={() => setGenerateAllState('confirm')}
+              disabled={generateAllState === 'running' || isGeneratingMoments}
+            >
+              {generateAllState === 'running'
+                ? `Generating all… ${generateAllProgress.done}/${generateAllProgress.total}`
+                : `Generate All Images (${project.moments.filter((m) => !m.imageUrl).length} remaining)`}
+            </Button>
+          )}
         </div>
       ) : null}
 
@@ -353,6 +461,12 @@ export default function Home() {
                 onSetConnectionMode={(mode) => {
                   if (nextMoment) handleSetConnectionMode(moment, nextMoment, mode)
                 }}
+                canMoveUp={i > 0}
+                canMoveDown={i < project.moments.length - 1}
+                onMove={(direction) => handleMoveMoment(i, direction)}
+                onUpdateDescription={(description) => handleUpdateDescription(moment.id, description)}
+                onRegenerateImage={() => handleRegenerateImage(moment)}
+                onReAnimate={() => handleReAnimate(moment)}
               />
             )
           })}

@@ -43,9 +43,16 @@ we build from image data rather than screenshotting DOM) and a JSZip image zip
 (`moment-NN.jpg`). Only moments with images are included. Note: jsPDF's built-in fonts are
 latin-1, so exported text is sanitized (em dashes, curly quotes) in `lib/export.ts`.
 
+**Storyboard editor (Screen 3) — shipped.** Lives on the moment cards + a toolbar:
+up/down reordering (renumbers; transitions for no-longer-adjacent pairs stop matching and
+revive if the order is restored), click-to-edit descriptions (existing image/animation is
+kept — regeneration is the user's explicit choice), Regenerate Image (also clears the
+moment's animation, which derived from the old image; bypasses the action's idempotency
+check by passing `imageUrl: null`), Re-Animate, and "Generate All Images" with an inline
+~cost estimate + confirm, running sequentially per the rate rule. "Generate Storyboard" is
+disabled while anything generates (a fresh breakdown would orphan in-flight paid results).
+
 **Not yet built:**
-- Full storyboard editor (Screen 3): moment reordering, editing descriptions, per-moment
-  regenerate, "Generate All Images" with the cost estimate.
 - Future connection modes: wipes, match-cut planning, and J/L-cuts (need audio).
   `ConnectionMode` is the extension point; new deterministic modes belong in the animatic
   player's timeline builder, never in a Kling call.
@@ -61,12 +68,10 @@ latin-1, so exported text is sanitized (em dashes, curly quotes) in `lib/export.
   set up for this (`.claude/skills/superdesign`) if/when a polish pass is wanted.
 
 **Known deferred cleanups (all Minor):**
-- "Generate Storyboard" stays clickable while a generation is in flight; clicking it replaces
-  all moment ids and orphans any in-flight (paid) video result. Fix: disable it while any
-  generating-id set is non-empty.
 - `handleGenerateImage`/`handleAnimateMoment`/`handleGenerateBridge` in `page.tsx` share a
   structural pattern — three instances now exist, so extracting a shared per-item async
-  helper is fair game in the next cleanup pass.
+  helper is fair game in the next cleanup pass. `page.tsx` has also grown large enough
+  that splitting the editor/generation handlers into a hook is worth considering then.
 
 ## Commands
 
