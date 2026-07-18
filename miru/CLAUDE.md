@@ -19,8 +19,33 @@ the script into 8-12 **moments** — its distinct visual beats. Older docs/plans
 **Current state:** verified live end to end against the real APIs: script → moment breakdown
 (Claude) → per-moment image (FLUX) → per-moment animation (Kling 1.6) → per-adjacent-pair
 *connections* (Hard Cut by default; opt-in Generated Bridge via Kling O3 dual-keyframe).
-`lib/storage.ts` persists the active `Project` to localStorage (key `scenelab:project:v2` —
-v1 pre-rebrand data is left to lapse). Note: `maxDuration = 300` lives in `page.tsx`, not any
+`lib/storage.ts` persists the active `Project` to localStorage (key `scenelab:project:v3`;
+`Moment` gained optional `scriptSpan`, backward compatible).
+
+**UI architecture (2026-07-18 two-mode redesign — approved Superdesign "Hero & Strip"):**
+the app is a **state machine**, not a growing page: `composing → listing → transitioning
+→ reviewing` in `page.tsx`. COMPOSE: narrow column (script, cast rows with per-row
+Refine ✦, style), "Generate Storyboard" is the single filled primary action, with the
+cost estimate folded in. `listing` never leaves compose (inline pending + Cancel; failure
+lands inline). Generate is a **mode change**: on wave 1 (Claude breakdown) resolving, the
+script repaints as `layoutId`'d spans (per-moment `scriptSpan`, derived server-side from
+the breakdown's verbatim `scriptAnchor` via whitespace-tolerant in-order matching — never
+trust model character offsets) and Motion (`motion/react`) flies them into the REVIEW
+strip. REVIEW: left rail (`left-rail.tsx`, PROJECT + EXPORTS sections — exports disabled
+until frames exist), hero canvas (`hero-canvas.tsx`), right inspector (`inspector.tsx`),
+thumbnail strip with clickable connection joints (`review-strip.tsx`). Waves 2/3 resolve
+inside review as progressive fill: wave 2 auto-runs the **sequential** render queue
+(cancellable — stops scheduling, keeps landed frames); wave 3 joints go dormant → armed
+→ user-pulled (bridges stay opt-in, never auto-chained). Inspector shows generation
+provenance (FLUX 1.1 Pro / Kling 1.6 / Kling O3 + timestamps), an **editable prompt**
+(persisted to `moment.imagePrompt`; renders pass it as `promptOverride`), and bridge
+generate/regenerate. Reduced motion: same machine, cross-fade instead of fly. A listing
+uses a monotonic token (`listingSeqRef`) so a cancelled request's late resolution can
+never race a newer one — do not replace it with a boolean.
+
+**Known regressions from the redesign (deliberate, follow-up candidates):** moment
+reordering and description editing had no home in the new inspector yet; the animatic
+opens via the rail into the review canvas. Note: `maxDuration = 300` lives in `page.tsx`, not any
 action file — a `'use server'` module may only export async functions; page-level placement
 is the documented Next.js mechanism for extending Server Action timeouts. Design docs live in
 `docs/superpowers/{specs,plans}/`. A related sandbox repo, `personalprojects/scenelab-api-test`,
@@ -140,11 +165,17 @@ interface Transition {
   generatedAt: string | null
 }
 
+interface Character {
+  id: string
+  name: string
+  description: string
+}
+
 interface Project {
   id: string
   title: string
   script: string
-  characterDescription: string
+  characters: Character[]     // the cast — composed into every image prompt (storage v3)
   stylePreset: StylePreset
   moments: Moment[]
   transitions: Transition[]   // sparse — only pairs the user has touched; absence = Hard Cut
@@ -183,11 +214,14 @@ interface Project {
   image: a bridge ends exactly where that moment's own animation begins. Known limitation:
   a bridge generated *before* the from-moment was animated is not invalidated afterwards
   (idempotent reuse wins); regeneration support is future work.
-- Character refinement ("Refine with AI ✦" on the character field): Claude rewrites the
-  user's description into a visual-consistency descriptor (attributes preserved, 25-60
-  words, no style words — the style preset is added separately by `buildImagePrompt`) plus
-  user-facing notes. Always suggest-then-accept — never overwrite the field without an
-  explicit "Use this" click. Prompt validated in
+- Characters are a tabbed cast (`Character[]`): each has a name + visual description, all
+  composed into the image prompt via `composeCharacterDescription()` in `lib/prompts.ts`
+  ("Maya — …; Theo — …"); the segment is omitted entirely when no character has a
+  description. Character refinement ("Refine with AI ✦", per tab): Claude rewrites that
+  character's description into a visual-consistency descriptor (attributes preserved,
+  25-60 words, no style words) plus user-facing notes. Always suggest-then-accept — never
+  overwrite without an explicit "Use this" click; the suggestion is pinned to the
+  character it was generated for. Prompt validated in
   `scenelab-api-test/test-character-refine.js` (2026-07-18); revise there first.
 - Hard Cut, Dissolve, and Fade to Black are not AI calls: selecting any of them must make
   zero network requests. Dissolve/fade are rendered by the animatic player at playback time.

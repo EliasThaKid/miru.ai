@@ -14,6 +14,11 @@ export interface Moment {
   shotType: ShotType
   description: string
   durationSeconds: number
+  // Character range of the script this moment is drawn from (derived from the breakdown's
+  // verbatim scriptAnchor). Drives the compose→review shared-element transition; null =
+  // no clean source span (that moment fades instead of flying). Optional: pre-existing
+  // saved projects lack it.
+  scriptSpan?: { start: number; end: number } | null
   imageUrl: string | null
   imagePrompt: string | null
   videoUrl: string | null
@@ -35,11 +40,19 @@ export interface Transition {
   generatedAt: string | null
 }
 
+// A named character in the scene. All character descriptions are composed into the
+// image prompt so every generated frame keeps the cast consistent.
+export interface Character {
+  id: string
+  name: string
+  description: string
+}
+
 export interface Project {
   id: string
   title: string
   script: string
-  characterDescription: string
+  characters: Character[]
   stylePreset: StylePreset
   moments: Moment[]
   transitions: Transition[]   // sparse — only pairs the user has touched

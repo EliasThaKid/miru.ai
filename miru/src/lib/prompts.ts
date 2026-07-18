@@ -16,8 +16,10 @@ const SHOT_LABELS: Record<ShotType, string> = {
 }
 
 // Mirrors the prompt structure smoke-tested in
-// personalprojects/scenelab-api-test/test-flux.js: style prefix, character description,
-// shot label, scene description, consistency reminder, then the fixed format constraints.
+// personalprojects/scenelab-api-test/test-flux.js: style prefix, character description(s),
+// shot label, moment description, consistency reminder, then the fixed format constraints.
+// characterDescription is the composed cast (see composeCharacterDescription) and may be
+// empty, in which case the segment is omitted rather than emitting "Main character: ".
 export function buildImagePrompt(
   stylePreset: StylePreset,
   characterDescription: string,
@@ -26,12 +28,26 @@ export function buildImagePrompt(
 ): string {
   return [
     STYLE_PREFIXES[stylePreset],
-    `Main character: ${characterDescription}`,
+    characterDescription.trim() ? `Main character${characterDescription.includes(';') ? 's' : ''}: ${characterDescription}` : null,
     SHOT_LABELS[shotType],
     description,
     'maintain consistent character identity, facial features, hairstyle, wardrobe, color palette, lighting direction, and cinematic atmosphere from the previous image',
     'vertical 9:16 composition, portrait orientation, Instagram Reels format, no text or watermarks',
-  ].join('. ')
+  ]
+    .filter((segment): segment is string => segment !== null)
+    .join('. ')
+}
+
+// Flattens the cast into one prompt segment: "Maya — young woman, dark bob; Theo — tall
+// man in a grey coat". Characters without descriptions are skipped; a single unnamed
+// character passes through as a bare description (matching the original tested format).
+export function composeCharacterDescription(characters: { name: string; description: string }[]): string {
+  const described = characters.filter((c) => c.description.trim())
+  if (described.length === 0) return ''
+  if (described.length === 1 && !described[0].name.trim()) return described[0].description.trim()
+  return described
+    .map((c) => (c.name.trim() ? `${c.name.trim()} — ${c.description.trim()}` : c.description.trim()))
+    .join('; ')
 }
 
 const SHOT_MOTION: Record<ShotType, string> = {

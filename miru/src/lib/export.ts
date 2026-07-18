@@ -3,6 +3,7 @@
 // than screenshotting DOM nodes — keeps export decoupled from UI markup.
 import { jsPDF } from 'jspdf'
 import JSZip from 'jszip'
+import { composeCharacterDescription } from '@/lib/prompts'
 import type { Moment, Project } from '@/types'
 
 // jsPDF's built-in fonts are latin-1; typographic characters (em dashes, curly quotes)
@@ -67,7 +68,9 @@ export async function exportStoryboardPdf(project: Project): Promise<void> {
   doc.setTextColor(90)
   const coverLines = [
     `Style: ${project.stylePreset}`,
-    project.characterDescription.trim() ? `Character: ${sanitize(project.characterDescription)}` : null,
+    composeCharacterDescription(project.characters)
+      ? `Characters: ${sanitize(composeCharacterDescription(project.characters))}`
+      : null,
     `${project.moments.length} moments (${moments.length} with images)`,
     new Date().toLocaleDateString(),
   ].filter((line): line is string => line !== null)

@@ -13,13 +13,15 @@ Schema:
       "number": 1,
       "shotType": "wide | medium | close-up | pov | over-the-shoulder",
       "description": "Visual description of what the camera sees. 1-2 sentences. Include subject, action, environment, mood, lighting. Written as a camera direction, not a script line.",
-      "durationSeconds": 3
+      "durationSeconds": 3,
+      "scriptAnchor": "The alarm blares. Maya's eyes snap"
     }
   ]
 }
 
 Rules:
 - durationSeconds must be 2-10. Size each moment by its content: a quick action beat runs 2-3 seconds; a lingering emotional or atmospheric beat can run up to 10.
+- scriptAnchor is the VERBATIM first 4-8 words of the passage of the ORIGINAL script this moment is drawn from — copied character-for-character (same punctuation, same capitalization), never paraphrased. Anchors must appear in the same order as the script. If a moment has no contiguous source passage, use null for scriptAnchor instead of guessing.
 - Descriptions must be visual and specific. Not 'she looks sad' - 'a young woman stares out a rain-streaked window, her reflection ghostly against the dark street below.'
 - First moment must be a strong visual hook.
 - Distribute shot types naturally across the breakdown.
@@ -35,6 +37,10 @@ export interface BreakdownMoment {
   shotType: ShotType
   description: string
   durationSeconds: number
+  scriptAnchor?: string | null
+  // Derived server-side from scriptAnchor via whitespace-tolerant in-order matching —
+  // never trusted from the model directly (models can't do character arithmetic).
+  scriptSpan?: { start: number; end: number } | null
 }
 
 export interface MomentBreakdownResult {
@@ -125,6 +131,64 @@ async function callAndParse(system: string, userContent: string, failureMessage:
   }
 }
 
+// Whitespace-tolerant, in-order anchor resolution (validated in
+// scenelab-api-test/test-scene-breakdown.js, anchor yield 11-12/12 on normal scripts).
+// Collapses whitespace runs on both sides while keeping an index map back to raw offsets.
+// A missed anchor degrades to a null span — choreography data, never a breakdown failure.
+function resolveScriptSpans(script: string, moments: BreakdownMoment[]): void {
+  const map: number[] = []
+  let normalized = ''
+  let lastWasSpace = true
+  for (let i = 0; i < script.length; i++) {
+    if (/\s/.test(script[i])) {
+      if (!lastWasSpace) {
+        normalized += ' '
+        map.push(i)
+        lastWasSpace = true
+      }
+    } else {
+      normalized += script[i]
+      map.push(i)
+      lastWasSpace = false
+    }
+  }
+
+  const starts: (number | null)[] = []
+  let searchFrom = 0
+  for (const moment of moments) {
+    const anchor = moment.scriptAnchor
+    if (typeof anchor !== 'string' || anchor.trim().length < 4) {
+      starts.push(null)
+      continue
+    }
+    const idx = normalized.indexOf(anchor.trim().replace(/\s+/g, ' '), searchFrom)
+    if (idx === -1) {
+      starts.push(null)
+      continue
+    }
+    starts.push(map[idx])
+    searchFrom = idx + anchor.trim().replace(/\s+/g, ' ').length
+  }
+
+  // Each resolved moment's span runs from its anchor to the next resolved anchor.
+  moments.forEach((moment, i) => {
+    const start = starts[i]
+    if (start === null || start === undefined) {
+      moment.scriptSpan = null
+      return
+    }
+    let end = script.length
+    for (let j = i + 1; j < starts.length; j++) {
+      const next = starts[j]
+      if (next !== null && next !== undefined) {
+        end = next
+        break
+      }
+    }
+    moment.scriptSpan = start < end ? { start, end } : null
+  })
+}
+
 export async function breakdownMoments(script: string): Promise<MomentBreakdownResult> {
   const parsed = await callAndParse(
     SYSTEM_PROMPT,
@@ -137,7 +201,9 @@ export async function breakdownMoments(script: string): Promise<MomentBreakdownR
     throw new Error("We couldn't generate a valid moment breakdown from that script. Please try again.")
   }
 
-  return parsed as MomentBreakdownResult
+  const result = parsed as MomentBreakdownResult
+  resolveScriptSpans(script, result.moments)
+  return result
 }
 
 // Ported from personalprojects/scenelab-api-test/test-character-refine.js — validated

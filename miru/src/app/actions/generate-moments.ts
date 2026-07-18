@@ -17,6 +17,7 @@ export async function generateMoments(script: string): Promise<GenerateMomentsRe
         shotType: moment.shotType,
         description: moment.description,
         durationSeconds: moment.durationSeconds,
+        scriptSpan: moment.scriptSpan ?? null,
         imageUrl: null,
         imagePrompt: null,
         videoUrl: null,

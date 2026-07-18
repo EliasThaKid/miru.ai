@@ -153,3 +153,13 @@
     opacity: 1;
   }
 }
+
+/* Three-level text hierarchy (design-system correction, 2026-07-18). Primary =
+   --foreground, secondary = --muted-foreground; tertiary is the new dim step for
+   badges, placeholders, and disabled chrome. */
+:root {
+  --text-tertiary: oklch(0.45 0 0);
+}
+.dark {
+  --text-tertiary: oklch(0.55 0 0);
+}
