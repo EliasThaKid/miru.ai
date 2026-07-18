@@ -43,9 +43,10 @@ generate/regenerate. Reduced motion: same machine, cross-fade instead of fly. A 
 uses a monotonic token (`listingSeqRef`) so a cancelled request's late resolution can
 never race a newer one — do not replace it with a boolean.
 
-**Known regressions from the redesign (deliberate, follow-up candidates):** moment
-reordering and description editing had no home in the new inspector yet; the animatic
-opens via the rail into the review canvas. Note: `maxDuration = 300` lives in `page.tsx`, not any
+The inspector also owns per-moment editing: DESCRIPTION (editable; note that once
+`imagePrompt` is stored, the prompt — not the description — drives renders) and ◀ ▶
+reordering in the SHOT block (renumbers; selection follows the moved moment). The
+animatic opens via the rail into the review canvas. Note: `maxDuration = 300` lives in `page.tsx`, not any
 action file — a `'use server'` module may only export async functions; page-level placement
 is the documented Next.js mechanism for extending Server Action timeouts. Design docs live in
 `docs/superpowers/{specs,plans}/`. A related sandbox repo, `personalprojects/scenelab-api-test`,
@@ -196,10 +197,13 @@ interface Project {
   built via `buildImagePrompt()` in `lib/prompts.ts` — style prefix + character description
   + shot label + moment description. Never generate images in parallel; sequential only, to
   avoid rate spikes.
-- Moment animation (FAL.ai Kling 1.6): always opt-in per moment, triggered only by explicit
-  "Animate Moment" click. Never auto-triggered on image generation. If `moment.videoUrl`
-  already exists, return it instantly — do not re-call the API. Clips are always 5s
-  (`duration: '5'`, the only smoke-tested value).
+- Moment animation (FAL.ai Kling 1.6): always opt-in per moment, triggered only from the
+  inspector. Never auto-triggered on image generation. If `moment.videoUrl` already
+  exists, return it instantly — do not re-call the API. Clip length maps from
+  `durationSeconds`: **≥8s → `duration: '10'`, else `'5'`** — both values smoke-tested
+  (`test-kling.js` 2026-07-16; `test-kling-10s.js` 2026-07-18, live clip measured 10.43s).
+  No other duration values are validated. `durationSeconds` is editable in the inspector
+  (−/+ stepper, 2-10); editing it keeps an existing clip — Re-Animate to match.
 - Generated Bridge (FAL.ai Kling O3 Standard, dual-keyframe,
   `fal-ai/kling-video/o3/standard/image-to-video` — validated live 2026-07-16, ~60s):
   always opt-in, always between two *adjacent* moments that both already have generated
@@ -214,10 +218,16 @@ interface Project {
   image: a bridge ends exactly where that moment's own animation begins. Known limitation:
   a bridge generated *before* the from-moment was animated is not invalidated afterwards
   (idempotent reuse wins); regeneration support is future work.
-- Characters are a tabbed cast (`Character[]`): each has a name + visual description, all
-  composed into the image prompt via `composeCharacterDescription()` in `lib/prompts.ts`
-  ("Maya — …; Theo — …"); the segment is omitted entirely when no character has a
-  description. Character refinement ("Refine with AI ✦", per tab): Claude rewrites that
+- Characters are a cast (`Character[]`): each has a name + visual description. The
+  breakdown receives the cast (a CAST block above the script) and assigns per-moment
+  `characters` — who is VISIBLY PRESENT in each frame (validated live: solo-storyline
+  scripts get clean solo assignments; unknown names are dropped server-side). Stored as
+  `moment.characterNames`; **only the assigned cast enters that moment's image prompt**
+  via `castForMoment()` + `composeCharacterDescription()` in `lib/prompts.ts`. Semantics:
+  null/undefined = legacy → whole cast; `[]` = deliberately nobody. The inspector's
+  "CAST IN FRAME" chips toggle assignments per moment (legacy moments materialize the
+  full list on first toggle). The prompt segment is omitted entirely when the effective
+  cast is empty. Character refinement ("Refine with AI ✦", per tab): Claude rewrites that
   character's description into a visual-consistency descriptor (attributes preserved,
   25-60 words, no style words) plus user-facing notes. Always suggest-then-accept — never
   overwrite without an explicit "Use this" click; the suggestion is pinned to the

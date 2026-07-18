@@ -14,7 +14,8 @@ Schema:
       "shotType": "wide | medium | close-up | pov | over-the-shoulder",
       "description": "Visual description of what the camera sees. 1-2 sentences. Include subject, action, environment, mood, lighting. Written as a camera direction, not a script line.",
       "durationSeconds": 3,
-      "scriptAnchor": "The alarm blares. Maya's eyes snap"
+      "scriptAnchor": "The alarm blares. Maya's eyes snap",
+      "characters": ["Maya"]
     }
   ]
 }
@@ -22,6 +23,7 @@ Schema:
 Rules:
 - durationSeconds must be 2-10. Size each moment by its content: a quick action beat runs 2-3 seconds; a lingering emotional or atmospheric beat can run up to 10.
 - scriptAnchor is the VERBATIM first 4-8 words of the passage of the ORIGINAL script this moment is drawn from — copied character-for-character (same punctuation, same capitalization), never paraphrased. Anchors must appear in the same order as the script. If a moment has no contiguous source passage, use null for scriptAnchor instead of guessing.
+- characters lists which members of the provided CAST are VISIBLY PRESENT in this moment's frame — only names from the cast list, spelled exactly as given. A close-up of one person lists only that person. Use [] for moments where no cast member is on screen (empty environments, objects, inserts). If no cast list is provided, always use [].
 - Descriptions must be visual and specific. Not 'she looks sad' - 'a young woman stares out a rain-streaked window, her reflection ghostly against the dark street below.'
 - First moment must be a strong visual hook.
 - Distribute shot types naturally across the breakdown.
@@ -37,6 +39,8 @@ export interface BreakdownMoment {
   shotType: ShotType
   description: string
   durationSeconds: number
+  // Which provided cast members are visibly present in this moment's frame.
+  characters?: string[]
   scriptAnchor?: string | null
   // Derived server-side from scriptAnchor via whitespace-tolerant in-order matching —
   // never trusted from the model directly (models can't do character arithmetic).
@@ -189,10 +193,19 @@ function resolveScriptSpans(script: string, moments: BreakdownMoment[]): void {
   })
 }
 
-export async function breakdownMoments(script: string): Promise<MomentBreakdownResult> {
+export async function breakdownMoments(
+  script: string,
+  cast: { name: string; description: string }[] = []
+): Promise<MomentBreakdownResult> {
+  const describedCast = cast.filter((c) => c.name.trim() && c.description.trim())
+  const userContent =
+    describedCast.length > 0
+      ? `CAST:\n${describedCast.map((c) => `${c.name.trim()} — ${c.description.trim()}`).join('\n')}\n\nSCRIPT:\n${script}`
+      : script
+
   const parsed = await callAndParse(
     SYSTEM_PROMPT,
-    script,
+    userContent,
     "We couldn't generate a moment breakdown from that script. Please try again."
   )
 
@@ -203,6 +216,15 @@ export async function breakdownMoments(script: string): Promise<MomentBreakdownR
 
   const result = parsed as MomentBreakdownResult
   resolveScriptSpans(script, result.moments)
+
+  // Keep only names that actually exist in the cast — a hallucinated name silently drops.
+  const knownNames = new Set(describedCast.map((c) => c.name.trim()))
+  for (const moment of result.moments) {
+    moment.characters = Array.isArray(moment.characters)
+      ? moment.characters.filter((n) => knownNames.has(n))
+      : []
+  }
+
   return result
 }
 

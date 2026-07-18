@@ -38,6 +38,17 @@ export function buildImagePrompt(
     .join('. ')
 }
 
+// The cast that actually belongs in a given moment's frame. undefined/null assignment =
+// legacy data → whole cast (the old behavior); [] = deliberately nobody on screen.
+export function castForMoment<T extends { name: string }>(
+  characters: T[],
+  characterNames: string[] | null | undefined
+): T[] {
+  if (characterNames === null || characterNames === undefined) return characters
+  const names = new Set(characterNames.map((n) => n.trim()))
+  return characters.filter((c) => names.has(c.name.trim()))
+}
+
 // Flattens the cast into one prompt segment: "Maya — young woman, dark bob; Theo — tall
 // man in a grey coat". Characters without descriptions are skipped; a single unnamed
 // character passes through as a bare description (matching the original tested format).
@@ -51,18 +62,20 @@ export function composeCharacterDescription(characters: { name: string; descript
 }
 
 const SHOT_MOTION: Record<ShotType, string> = {
-  wide: 'slow cinematic push-in, subtle environmental movement in the background, gentle camera drift. Cinematic, smooth, 5 seconds.',
-  medium: 'gentle handheld movement, subject breathing, natural micro-motion. Cinematic, smooth, 5 seconds.',
-  'close-up': 'subtle facial micro-expression, natural blinking and breathing, minimal camera movement, shallow focus holds steady. Cinematic, smooth, 5 seconds.',
-  pov: 'handheld drift matching natural head movement, subtle parallax between foreground and background. Cinematic, smooth, 5 seconds.',
-  'over-the-shoulder': 'gentle handheld movement, foreground figure stays anchored, subject in the background breathes and shifts naturally. Cinematic, smooth, 5 seconds.',
+  wide: 'slow cinematic push-in, subtle environmental movement in the background, gentle camera drift',
+  medium: 'gentle handheld movement, subject breathing, natural micro-motion',
+  'close-up': 'subtle facial micro-expression, natural blinking and breathing, minimal camera movement, shallow focus holds steady',
+  pov: 'handheld drift matching natural head movement, subtle parallax between foreground and background',
+  'over-the-shoulder': 'gentle handheld movement, foreground figure stays anchored, subject in the background breathes and shifts naturally',
 }
 
 // Motion mapping ported from personalprojects/scenelab-api-test/test-kling.js for 'medium'
 // (the only confirmed value); the other four shot types were drafted to match its tone and
-// approved during design review (docs/superpowers/specs/2026-07-16-animate-scene-design.md).
-export function buildVideoPrompt(shotType: ShotType, description: string): string {
-  return [SHOT_MOTION[shotType], description].join('. ')
+// approved during design review. clipSeconds interpolates into the fixed suffix — the 5s
+// output is byte-identical to the originally validated prompt; 10s was smoke-tested
+// 2026-07-18 (test-kling-10s.js).
+export function buildVideoPrompt(shotType: ShotType, description: string, clipSeconds: 5 | 10 = 5): string {
+  return [`${SHOT_MOTION[shotType]}. Cinematic, smooth, ${clipSeconds} seconds.`, description].join('. ')
 }
 
 const BRIDGE_FALLBACK =

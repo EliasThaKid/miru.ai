@@ -21,8 +21,10 @@ export async function generateMomentVideo(moment: Moment): Promise<GenerateVideo
   }
 
   try {
-    const videoPrompt = buildVideoPrompt(moment.shotType, moment.description)
-    const videoUrl = await animateMoment(moment.imageUrl ?? '', videoPrompt)
+    // Long moments (8-10s) get 10-second clips; everything else the validated 5s.
+    const clipSeconds = moment.durationSeconds >= 8 ? 10 : 5
+    const videoPrompt = buildVideoPrompt(moment.shotType, moment.description, clipSeconds)
+    const videoUrl = await animateMoment(moment.imageUrl ?? '', videoPrompt, clipSeconds === 10 ? '10' : '5')
     return { ok: true, videoUrl, videoPrompt }
   } catch (err) {
     return {

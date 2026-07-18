@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
-import { buildImagePrompt, composeCharacterDescription } from '@/lib/prompts'
+import { buildImagePrompt, castForMoment, composeCharacterDescription } from '@/lib/prompts'
 import type { ConnectionMode, Moment, Project, Transition } from '@/types'
 import type { JointStatus, ReviewSelection, SlotStatus } from '@/components/review-strip'
 
@@ -26,6 +26,10 @@ interface InspectorProps {
   slotStatus: (moment: Moment) => SlotStatus
   jointStatus: (from: Moment, to: Moment) => JointStatus
   onEditPrompt: (momentId: string, prompt: string) => void
+  onEditDescription: (momentId: string, description: string) => void
+  onEditDuration: (momentId: string, durationSeconds: number) => void
+  onToggleCharacter: (momentId: string, name: string) => void
+  onMove: (momentId: string, direction: -1 | 1) => void
   onRender: (moment: Moment) => void
   onRegenerateImage: (moment: Moment) => void
   onAnimate: (moment: Moment) => void
@@ -54,6 +58,10 @@ function FrameInspector({
   project,
   slotStatus,
   onEditPrompt,
+  onEditDescription,
+  onEditDuration,
+  onToggleCharacter,
+  onMove,
   onRender,
   onRegenerateImage,
   onAnimate,
@@ -61,17 +69,96 @@ function FrameInspector({
   errors,
 }: InspectorProps & { moment: Moment }) {
   const status = slotStatus(moment)
+  const index = project.moments.findIndex((m) => m.id === moment.id)
+  const longClip = moment.durationSeconds >= 8
+  const momentCast = castForMoment(project.characters, moment.characterNames)
   const effectivePrompt =
     moment.imagePrompt ??
-    buildImagePrompt(project.stylePreset, composeCharacterDescription(project.characters), moment.shotType, moment.description)
+    buildImagePrompt(project.stylePreset, composeCharacterDescription(momentCast), moment.shotType, moment.description)
 
   return (
     <div className="flex w-72 shrink-0 flex-col gap-5">
       <div className="flex flex-col gap-1">
         <p className={LABEL}>SHOT</p>
-        <p className="text-sm text-foreground">
-          {moment.shotType} · {moment.durationSeconds}s
-        </p>
+        <div className="flex items-center gap-2">
+          <p className="flex-1 text-sm text-foreground">
+            {moment.shotType} ·{' '}
+            <button
+              type="button"
+              aria-label="Decrease duration"
+              onClick={() => onEditDuration(moment.id, Math.max(2, moment.durationSeconds - 1))}
+              disabled={moment.durationSeconds <= 2}
+              className="text-[var(--muted-foreground)] transition-colors hover:text-foreground disabled:opacity-40"
+            >
+              −
+            </button>{' '}
+            {moment.durationSeconds}s{' '}
+            <button
+              type="button"
+              aria-label="Increase duration"
+              onClick={() => onEditDuration(moment.id, Math.min(10, moment.durationSeconds + 1))}
+              disabled={moment.durationSeconds >= 10}
+              className="text-[var(--muted-foreground)] transition-colors hover:text-foreground disabled:opacity-40"
+            >
+              +
+            </button>
+          </p>
+          <button
+            type="button"
+            aria-label="Move moment earlier"
+            onClick={() => onMove(moment.id, -1)}
+            disabled={index <= 0}
+            className={ACTION}
+          >
+            ◀
+          </button>
+          <button
+            type="button"
+            aria-label="Move moment later"
+            onClick={() => onMove(moment.id, 1)}
+            disabled={index < 0 || index >= project.moments.length - 1}
+            className={ACTION}
+          >
+            ▶
+          </button>
+        </div>
+      </div>
+
+      {project.characters.length > 0 ? (
+        <div className="flex flex-col gap-1.5">
+          <p className={LABEL}>CAST IN FRAME</p>
+          <div className="flex flex-wrap gap-1.5">
+            {project.characters.map((c) => {
+              const active = momentCast.some((mc) => mc.id === c.id)
+              return (
+                <button
+                  key={c.id}
+                  type="button"
+                  onClick={() => onToggleCharacter(moment.id, c.name)}
+                  aria-pressed={active}
+                  className={`rounded-full px-2.5 py-0.5 text-[12px] transition-colors ${
+                    active
+                      ? 'bg-white/10 text-foreground'
+                      : 'text-[var(--text-tertiary)] hover:text-[var(--muted-foreground)]'
+                  }`}
+                >
+                  {c.name.trim() || 'Unnamed'}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      ) : null}
+
+      <div className="flex flex-col gap-1.5">
+        <p className={LABEL}>DESCRIPTION</p>
+        <Textarea
+          value={moment.description}
+          onChange={(e) => onEditDescription(moment.id, e.target.value)}
+          rows={3}
+          className="field-sizing-content max-h-40 min-h-16 text-[12px]"
+          aria-label="Moment description"
+        />
       </div>
 
       <div className="flex flex-col gap-1.5">
@@ -110,7 +197,7 @@ function FrameInspector({
               </button>
               {!moment.videoUrl ? (
                 <button type="button" className={ACTION} onClick={() => onAnimate(moment)}>
-                  Animate ✦ Kling 1.6 (~2-5 min)
+                  {longClip ? 'Animate ✦ Kling 1.6 · 10s clip (~4-8 min)' : 'Animate ✦ Kling 1.6 · 5s clip (~2-5 min)'}
                 </button>
               ) : (
                 <button type="button" className={ACTION} onClick={() => onReAnimate(moment)}>

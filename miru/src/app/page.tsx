@@ -157,7 +157,7 @@ export default function Home() {
     const seq = ++listingSeqRef.current
     setMode('listing')
 
-    const result = await generateMoments(project.script)
+    const result = await generateMoments(project.script, project.characters)
 
     // Stale resolution: cancelled, or superseded by a newer Generate press.
     if (seq !== listingSeqRef.current) return
@@ -213,11 +213,12 @@ export default function Home() {
     setImageErrors((prev) => ({ ...prev, [moment.id]: '' }))
 
     const { stylePreset, characters } = projectRef.current
-    const { composeCharacterDescription } = await import('@/lib/prompts')
+    const { composeCharacterDescription, castForMoment } = await import('@/lib/prompts')
+    // Only the cast assigned to this moment enters the prompt.
     const result = await generateMomentImage(
       moment,
       stylePreset,
-      composeCharacterDescription(characters),
+      composeCharacterDescription(castForMoment(characters, moment.characterNames)),
       moment.imagePrompt
     )
 
@@ -392,6 +393,58 @@ export default function Home() {
       moments: prev.moments.map((m) => (m.id === momentId ? { ...m, imagePrompt: prompt } : m)),
       updatedAt: new Date().toISOString(),
     }))
+  }
+
+  // Edits keep existing media (possibly stale) — regeneration is the user's explicit,
+  // costed choice. Note: once imagePrompt is set, it (not the description) drives renders.
+  function handleEditDescription(momentId: string, description: string) {
+    setProject((prev) => ({
+      ...prev,
+      moments: prev.moments.map((m) => (m.id === momentId ? { ...m, description } : m)),
+      updatedAt: new Date().toISOString(),
+    }))
+  }
+
+  // Toggle a cast member in/out of a moment's frame. Legacy moments (characterNames
+  // null/undefined = whole cast) materialize the full name list first, then toggle.
+  function handleToggleCharacter(momentId: string, name: string) {
+    setProject((prev) => ({
+      ...prev,
+      moments: prev.moments.map((m) => {
+        if (m.id !== momentId) return m
+        const current = m.characterNames ?? prev.characters.map((c) => c.name)
+        const next = current.includes(name) ? current.filter((n) => n !== name) : [...current, name]
+        return { ...m, characterNames: next }
+      }),
+      updatedAt: new Date().toISOString(),
+    }))
+  }
+
+  // Duration edits keep an existing clip (possibly now mismatched in length) — the user
+  // can Re-Animate to get a clip that matches; stills simply hold longer in the animatic.
+  function handleEditDuration(momentId: string, durationSeconds: number) {
+    setProject((prev) => ({
+      ...prev,
+      moments: prev.moments.map((m) => (m.id === momentId ? { ...m, durationSeconds } : m)),
+      updatedAt: new Date().toISOString(),
+    }))
+  }
+
+  // Swap with neighbor and renumber. Transitions are keyed by moment-id pairs, so records
+  // for pairs that stop being adjacent stop matching — and revive if the order is restored.
+  function handleMoveMoment(momentId: string, direction: -1 | 1) {
+    setProject((prev) => {
+      const index = prev.moments.findIndex((m) => m.id === momentId)
+      const target = index + direction
+      if (index < 0 || target < 0 || target >= prev.moments.length) return prev
+      const moments = [...prev.moments]
+      ;[moments[index], moments[target]] = [moments[target], moments[index]]
+      return {
+        ...prev,
+        moments: moments.map((m, i) => ({ ...m, number: i + 1 })),
+        updatedAt: new Date().toISOString(),
+      }
+    })
   }
 
   // ---------- cast ----------
@@ -663,6 +716,10 @@ export default function Home() {
                       slotStatus={slotStatus}
                       jointStatus={jointStatus}
                       onEditPrompt={handleEditPrompt}
+                      onEditDescription={handleEditDescription}
+                      onEditDuration={handleEditDuration}
+                      onToggleCharacter={handleToggleCharacter}
+                      onMove={handleMoveMoment}
                       onRender={handleRenderFrame}
                       onRegenerateImage={handleRegenerateImage}
                       onAnimate={handleAnimate}

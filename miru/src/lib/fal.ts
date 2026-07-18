@@ -24,14 +24,19 @@ export async function generateImage(prompt: string): Promise<string> {
   return url
 }
 
-// Endpoint and duration ported as-is from the smoke-tested
-// personalprojects/scenelab-api-test/test-kling.js — do not guess a new slug or param shape.
-export async function animateMoment(imageUrl: string, motionPrompt: string): Promise<string> {
+// Endpoint and params ported as-is from the smoke-tested
+// personalprojects/scenelab-api-test/test-kling.js; duration '10' additionally validated
+// live 2026-07-18 (test-kling-10s.js, ~4.7 min). Only these two values are tested.
+export async function animateMoment(
+  imageUrl: string,
+  motionPrompt: string,
+  duration: '5' | '10' = '5'
+): Promise<string> {
   const result = await fal.subscribe('fal-ai/kling-video/v1.6/standard/image-to-video', {
     input: {
       prompt: motionPrompt,
       image_url: imageUrl,
-      duration: '5',
+      duration,
     },
     logs: false,
   })

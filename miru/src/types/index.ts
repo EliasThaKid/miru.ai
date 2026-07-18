@@ -19,6 +19,10 @@ export interface Moment {
   // no clean source span (that moment fades instead of flying). Optional: pre-existing
   // saved projects lack it.
   scriptSpan?: { start: number; end: number } | null
+  // Names of the cast members visibly present in this moment (assigned by the breakdown,
+  // editable in the inspector). Only these characters enter the image prompt.
+  // undefined/null = legacy data → whole cast (old behavior). [] = deliberately no one.
+  characterNames?: string[] | null
   imageUrl: string | null
   imagePrompt: string | null
   videoUrl: string | null
