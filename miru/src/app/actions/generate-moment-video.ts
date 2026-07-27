@@ -23,7 +23,9 @@ export async function generateMomentVideo(moment: Moment): Promise<GenerateVideo
   try {
     // Long moments (8-10s) get 10-second clips; everything else the validated 5s.
     const clipSeconds = moment.durationSeconds >= 8 ? 10 : 5
-    const videoPrompt = buildVideoPrompt(moment.shotType, moment.description, clipSeconds)
+    // motion (forward change from the start frame) drives the clip; description is the
+    // legacy fallback for pre-split moments.
+    const videoPrompt = buildVideoPrompt(moment.shotType, moment.motion ?? moment.description, clipSeconds)
     const videoUrl = await animateMoment(moment.imageUrl ?? '', videoPrompt, clipSeconds === 10 ? '10' : '5')
     return { ok: true, videoUrl, videoPrompt }
   } catch (err) {

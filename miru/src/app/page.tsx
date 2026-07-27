@@ -5,8 +5,10 @@ import { AnimatePresence, MotionConfig, motion, useReducedMotion } from 'motion/
 import { generateMoments } from '@/app/actions/generate-moments'
 import { generateMomentImage } from '@/app/actions/generate-image'
 import { generateMomentVideo } from '@/app/actions/generate-moment-video'
+import { generateAnchoredMomentVideo } from '@/app/actions/generate-anchored-video'
 import { generateBridgeVideo } from '@/app/actions/generate-bridge'
-import { refineCharacterDescription } from '@/app/actions/refine-character'
+import { extractScriptContext } from '@/app/actions/extract-context'
+import { refineCharacterDescription, refineSettingDescription } from '@/app/actions/refine-character'
 import { AnimaticPlayer } from '@/components/animatic-player'
 import { HeroCanvas } from '@/components/hero-canvas'
 import { Inspector } from '@/components/inspector'
@@ -18,8 +20,9 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { extractLastFrame } from '@/lib/extract-frame'
+import { isDescriptionWeak } from '@/lib/prompts'
 import { loadProject, saveProject } from '@/lib/storage'
-import type { Character, ConnectionMode, Moment, Project, StylePreset, Transition } from '@/types'
+import type { Character, ConnectionMode, Moment, Project, Setting, StylePreset, Transition } from '@/types'
 
 // Extends the Server Action timeout for this page — Kling 1.6 (generateMomentVideo)
 // typically takes 2-5 minutes and Kling O3 bridges ~1-2; the other actions finish in seconds.
@@ -40,6 +43,7 @@ const EMPTY_PROJECT: Project = {
   title: '',
   script: '',
   characters: [],
+  settings: [],
   stylePreset: 'cinematic',
   moments: [],
   transitions: [],
@@ -75,13 +79,17 @@ export default function Home() {
   const [queueRunning, setQueueRunning] = useState(false)
   const [showAnimatic, setShowAnimatic] = useState(false)
 
-  const [isRefining, setIsRefining] = useState(false)
-  const [refineSuggestion, setRefineSuggestion] = useState<{
-    characterId: string
-    refined: string
-    notes: string[]
-  } | null>(null)
-  const [refineError, setRefineError] = useState<string | null>(null)
+  // Per-entity refine state (keyed by character/setting id) — one entity refining never
+  // touches another. Each refine runs independently; results are keyed so out-of-order
+  // resolutions land on the right entity.
+  const [refiningIds, setRefiningIds] = useState<Set<string>>(new Set())
+  const [refineSuggestions, setRefineSuggestions] = useState<Record<string, { refined: string; notes: string[] }>>({})
+  const [refineErrors, setRefineErrors] = useState<Record<string, string>>({})
+
+  // Auto-population: fires once per distinct script when panels are empty.
+  const [detecting, setDetecting] = useState(false)
+  const [detectError, setDetectError] = useState<string | null>(null)
+  const autoDetectedForRef = useRef<string | null>(null)
 
   const reduceMotion = useReducedMotion() ?? false
 
@@ -97,6 +105,8 @@ export default function Home() {
 
   useEffect(() => {
     const existing = loadProject()
+    // settings arrived after storage v3 shipped — normalize older v3 saves.
+    if (existing && !Array.isArray(existing.settings)) existing.settings = []
     setProject(
       existing ?? {
         ...EMPTY_PROJECT,
@@ -157,7 +167,22 @@ export default function Home() {
     const seq = ++listingSeqRef.current
     setMode('listing')
 
-    const result = await generateMoments(project.script, project.characters)
+    // Generate-time safety net: if the user pastes and hits Generate before/without
+    // auto-detection populating the panels, populate from the same extraction now so the
+    // breakdown gets a cast + settings. State updates are async, so use the returned
+    // values directly for this breakdown.
+    let cast = project.characters
+    let settings = project.settings
+    if (cast.length === 0 && settings.length === 0 && project.script.trim()) {
+      const detected = await runDetection(false)
+      if (seq !== listingSeqRef.current) return
+      if (detected) {
+        cast = detected.characters
+        settings = detected.settings
+      }
+    }
+
+    const result = await generateMoments(project.script, cast, settings)
 
     // Stale resolution: cancelled, or superseded by a newer Generate press.
     if (seq !== listingSeqRef.current) return
@@ -212,14 +237,15 @@ export default function Home() {
     setGeneratingImageIds((prev) => new Set(prev).add(moment.id))
     setImageErrors((prev) => ({ ...prev, [moment.id]: '' }))
 
-    const { stylePreset, characters } = projectRef.current
-    const { composeCharacterDescription, castForMoment } = await import('@/lib/prompts')
-    // Only the cast assigned to this moment enters the prompt.
+    const { stylePreset, characters, settings } = projectRef.current
+    const { composeCharacterDescription, castForMoment, settingForMoment } = await import('@/lib/prompts')
+    // Only the cast assigned to this moment enters the prompt; same for its setting.
     const result = await generateMomentImage(
       moment,
       stylePreset,
       composeCharacterDescription(castForMoment(characters, moment.characterNames)),
-      moment.imagePrompt
+      moment.imagePrompt,
+      settingForMoment(settings, moment.locationName)?.description ?? null
     )
 
     if (result.ok) {
@@ -269,7 +295,13 @@ export default function Home() {
         ...prev,
         moments: prev.moments.map((m) =>
           m.id === moment.id
-            ? { ...m, videoUrl: result.videoUrl, videoPrompt: result.videoPrompt, videoGeneratedAt: new Date().toISOString() }
+            ? {
+                ...m,
+                videoUrl: result.videoUrl,
+                videoPrompt: result.videoPrompt,
+                videoGeneratedAt: new Date().toISOString(),
+                videoModel: 'kling-1.6',
+              }
             : m
         ),
         updatedAt: new Date().toISOString(),
@@ -287,6 +319,49 @@ export default function Home() {
 
   async function handleReAnimate(moment: Moment) {
     await handleAnimate({ ...moment, videoUrl: null, videoPrompt: null })
+  }
+
+  // Dual-keyframe path: end still (FLUX, cached) + Kling O3 start→end. Same per-moment
+  // busy/error state as the standard animate.
+  async function handleAnimateAnchored(moment: Moment) {
+    setGeneratingVideoIds((prev) => new Set(prev).add(moment.id))
+    setVideoErrors((prev) => ({ ...prev, [moment.id]: '' }))
+
+    const { stylePreset, characters, settings } = projectRef.current
+    const { composeCharacterDescription, castForMoment, settingForMoment } = await import('@/lib/prompts')
+    const result = await generateAnchoredMomentVideo(
+      moment,
+      stylePreset,
+      composeCharacterDescription(castForMoment(characters, moment.characterNames)),
+      settingForMoment(settings, moment.locationName)?.description ?? null
+    )
+
+    if (result.ok) {
+      setProject((prev) => ({
+        ...prev,
+        moments: prev.moments.map((m) =>
+          m.id === moment.id
+            ? {
+                ...m,
+                videoUrl: result.videoUrl,
+                videoPrompt: result.videoPrompt,
+                videoGeneratedAt: new Date().toISOString(),
+                endImageUrl: result.endImageUrl,
+                videoModel: 'kling-o3-anchored',
+              }
+            : m
+        ),
+        updatedAt: new Date().toISOString(),
+      }))
+    } else {
+      setVideoErrors((prev) => ({ ...prev, [moment.id]: result.error }))
+    }
+
+    setGeneratingVideoIds((prev) => {
+      const next = new Set(prev)
+      next.delete(moment.id)
+      return next
+    })
   }
 
   // ---------- wave 3: bridges (armed, user-pulled) ----------
@@ -405,6 +480,39 @@ export default function Home() {
     }))
   }
 
+  function handleAddSetting() {
+    const setting: Setting = { id: crypto.randomUUID(), name: `Location ${project.settings.length + 1}`, description: '' }
+    setProject((prev) => ({ ...prev, settings: [...prev.settings, setting], updatedAt: new Date().toISOString() }))
+  }
+
+  function handleUpdateSetting(id: string, patch: Partial<Pick<Setting, 'name' | 'description'>>) {
+    setProject((prev) => ({
+      ...prev,
+      settings: prev.settings.map((s) => (s.id === id ? { ...s, ...patch } : s)),
+      updatedAt: new Date().toISOString(),
+    }))
+  }
+
+  function handleRemoveSetting(id: string) {
+    setProject((prev) => ({ ...prev, settings: prev.settings.filter((s) => s.id !== id), updatedAt: new Date().toISOString() }))
+  }
+
+  function handleSetLocation(momentId: string, locationName: string | null) {
+    setProject((prev) => ({
+      ...prev,
+      moments: prev.moments.map((m) => (m.id === momentId ? { ...m, locationName } : m)),
+      updatedAt: new Date().toISOString(),
+    }))
+  }
+
+  function handleEditMotion(momentId: string, motion: string) {
+    setProject((prev) => ({
+      ...prev,
+      moments: prev.moments.map((m) => (m.id === momentId ? { ...m, motion } : m)),
+      updatedAt: new Date().toISOString(),
+    }))
+  }
+
   // Toggle a cast member in/out of a moment's frame. Legacy moments (characterNames
   // null/undefined = whole cast) materialize the full name list first, then toggle.
   function handleToggleCharacter(momentId: string, name: string) {
@@ -447,16 +555,85 @@ export default function Home() {
     })
   }
 
+  // ---------- auto-population ----------
+
+  // Runs the extraction call. Returns the detected context (also for the generate
+  // fallback's synchronous use), or null on failure. `replace` overwrites existing panels
+  // (manual Re-detect); otherwise it only fills when both panels are empty.
+  async function runDetection(replace: boolean): Promise<{ characters: Character[]; settings: Setting[] } | null> {
+    const script = projectRef.current.script
+    if (!script.trim()) return null
+    setDetecting(true)
+    setDetectError(null)
+    const result = await extractScriptContext(script)
+    setDetecting(false)
+    if (!result.ok) {
+      setDetectError(result.error)
+      return null
+    }
+    const characters: Character[] = result.characters.map((c) => ({ id: crypto.randomUUID(), ...c }))
+    const settings: Setting[] = result.settings.map((s) => ({ id: crypto.randomUUID(), ...s }))
+    setProject((prev) => {
+      const nextCharacters = replace || prev.characters.length === 0 ? characters : prev.characters
+      const nextSettings = replace || prev.settings.length === 0 ? settings : prev.settings
+      return { ...prev, characters: nextCharacters, settings: nextSettings, updatedAt: new Date().toISOString() }
+    })
+    return { characters, settings }
+  }
+
+  // Auto-detect once per distinct script when panels are empty and there's enough text.
+  // The user "arrives at a populated project" without asking.
+  useEffect(() => {
+    if (!hasLoaded) return
+    const script = project.script.trim()
+    const bothEmpty = project.characters.length === 0 && project.settings.length === 0
+    const substantial = script.length >= 120
+    if (
+      bothEmpty &&
+      substantial &&
+      mode === 'composing' &&
+      autoDetectedForRef.current !== script &&
+      !detecting
+    ) {
+      autoDetectedForRef.current = script
+      void runDetection(false)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [project.script, project.characters.length, project.settings.length, hasLoaded, mode])
+
   // ---------- cast ----------
 
-  async function handleRefineCharacter(character: Character) {
-    setIsRefining(true)
-    setRefineError(null)
-    setRefineSuggestion(null)
-    const result = await refineCharacterDescription(project.script, character.description)
-    if (result.ok) setRefineSuggestion({ characterId: character.id, refined: result.refined, notes: result.notes })
-    else setRefineError(result.error)
-    setIsRefining(false)
+  // Per-entity refine — character OR setting, keyed by id. Never touches other entities.
+  async function handleRefine(kind: 'character' | 'setting', id: string, description: string) {
+    setRefiningIds((prev) => new Set(prev).add(id))
+    setRefineErrors((prev) => ({ ...prev, [id]: '' }))
+    setRefineSuggestions((prev) => {
+      const next = { ...prev }
+      delete next[id]
+      return next
+    })
+    const result =
+      kind === 'character'
+        ? await refineCharacterDescription(projectRef.current.script, description)
+        : await refineSettingDescription(projectRef.current.script, description)
+    if (result.ok) {
+      setRefineSuggestions((prev) => ({ ...prev, [id]: { refined: result.refined, notes: result.notes } }))
+    } else {
+      setRefineErrors((prev) => ({ ...prev, [id]: result.error }))
+    }
+    setRefiningIds((prev) => {
+      const next = new Set(prev)
+      next.delete(id)
+      return next
+    })
+  }
+
+  function dismissSuggestion(id: string) {
+    setRefineSuggestions((prev) => {
+      const next = { ...prev }
+      delete next[id]
+      return next
+    })
   }
 
   function handleAddCharacter() {
@@ -474,7 +651,7 @@ export default function Home() {
 
   function handleRemoveCharacter(id: string) {
     setProject((prev) => ({ ...prev, characters: prev.characters.filter((c) => c.id !== id), updatedAt: new Date().toISOString() }))
-    if (refineSuggestion?.characterId === id) setRefineSuggestion(null)
+    dismissSuggestion(id)
   }
 
   // ---------- render ----------
@@ -534,7 +711,23 @@ export default function Home() {
                 </div>
 
                 <motion.div animate={{ opacity: mode === 'transitioning' ? 0 : 1 }} className="flex flex-col gap-3">
-                  <p className="text-[11px] tracking-[0.18em] text-[var(--text-tertiary)]">CAST</p>
+                  <div className="flex items-center gap-3">
+                    <p className="text-[11px] tracking-[0.18em] text-[var(--text-tertiary)]">CAST</p>
+                    {detecting && project.characters.length === 0 ? (
+                      <p className="text-[12px] text-[var(--text-tertiary)]">Detecting cast & settings…</p>
+                    ) : null}
+                    {project.script.trim() ? (
+                      <button
+                        type="button"
+                        onClick={() => runDetection(true)}
+                        disabled={detecting}
+                        title="Re-run detection and replace the current cast & settings"
+                        className="ml-auto text-[12px] text-[var(--text-tertiary)] transition-colors hover:text-foreground disabled:opacity-40"
+                      >
+                        {detecting ? 'Detecting…' : 'Re-detect ✦'}
+                      </button>
+                    ) : null}
+                  </div>
                   {project.characters.map((c) => (
                     <div key={c.id} className="flex flex-col gap-1.5">
                       <div className="flex gap-2">
@@ -554,14 +747,19 @@ export default function Home() {
                           aria-label={`Description for ${c.name || 'character'}`}
                         />
                       </div>
+                      {isDescriptionWeak(c.description) ? (
+                        <p className="pl-1 text-[11px] text-[var(--text-tertiary)]">
+                          ⚠ Description is too short and may produce inconsistent generations.
+                        </p>
+                      ) : null}
                       <div className="flex gap-3 pl-1">
                         <button
                           type="button"
-                          onClick={() => handleRefineCharacter(c)}
-                          disabled={isRefining || (!project.script.trim() && !c.description.trim())}
+                          onClick={() => handleRefine('character', c.id, c.description)}
+                          disabled={refiningIds.has(c.id) || (!project.script.trim() && !c.description.trim())}
                           className="text-[12px] text-[var(--muted-foreground)] transition-colors hover:text-foreground disabled:opacity-40"
                         >
-                          {isRefining ? 'Refining…' : 'Refine with AI ✦'}
+                          {refiningIds.has(c.id) ? 'Refining…' : 'Refine with AI ✦'}
                         </button>
                         <button
                           type="button"
@@ -571,33 +769,19 @@ export default function Home() {
                           Remove
                         </button>
                       </div>
-                      {refineSuggestion && refineSuggestion.characterId === c.id ? (
-                        <div className="flex flex-col gap-2 rounded-2xl border border-white/10 p-3">
-                          <p className="text-sm">{refineSuggestion.refined}</p>
-                          <ul className="flex list-disc flex-col gap-1 pl-4 text-xs text-[var(--muted-foreground)]">
-                            {refineSuggestion.notes.map((note, i) => (
-                              <li key={i}>{note}</li>
-                            ))}
-                          </ul>
-                          <div className="flex gap-2">
-                            <Button
-                              size="sm"
-                              onClick={() => {
-                                handleUpdateCharacter(c.id, { description: refineSuggestion.refined })
-                                setRefineSuggestion(null)
-                              }}
-                            >
-                              Use this
-                            </Button>
-                            <Button size="sm" variant="ghost" onClick={() => setRefineSuggestion(null)}>
-                              Keep mine
-                            </Button>
-                          </div>
-                        </div>
+                      {refineErrors[c.id] ? <p className="pl-1 text-xs text-destructive">{refineErrors[c.id]}</p> : null}
+                      {refineSuggestions[c.id] ? (
+                        <SuggestionCard
+                          suggestion={refineSuggestions[c.id]}
+                          onUse={() => {
+                            handleUpdateCharacter(c.id, { description: refineSuggestions[c.id].refined })
+                            dismissSuggestion(c.id)
+                          }}
+                          onDismiss={() => dismissSuggestion(c.id)}
+                        />
                       ) : null}
                     </div>
                   ))}
-                  {refineError ? <p className="text-xs text-destructive">{refineError}</p> : null}
                   <button
                     type="button"
                     onClick={handleAddCharacter}
@@ -605,6 +789,72 @@ export default function Home() {
                   >
                     + Add character
                   </button>
+
+                  <div className="mt-2 flex flex-col gap-3">
+                    <p className="text-[11px] tracking-[0.18em] text-[var(--text-tertiary)]">SETTINGS</p>
+                    {project.settings.map((s) => (
+                      <div key={s.id} className="flex flex-col gap-1.5">
+                        <div className="flex gap-2">
+                          <Input
+                            value={s.name}
+                            onChange={(e) => handleUpdateSetting(s.id, { name: e.target.value })}
+                            placeholder="Location name"
+                            className="w-44"
+                            aria-label="Setting name"
+                          />
+                          <Textarea
+                            value={s.description}
+                            onChange={(e) => handleUpdateSetting(s.id, { description: e.target.value })}
+                            placeholder="Visual description of this location"
+                            rows={1}
+                            className="field-sizing-content max-h-32 min-h-8 flex-1 text-sm"
+                            aria-label={`Description for ${s.name || 'setting'}`}
+                          />
+                        </div>
+                        {isDescriptionWeak(s.description) ? (
+                          <p className="pl-1 text-[11px] text-[var(--text-tertiary)]">
+                            ⚠ Description is too short and may produce inconsistent generations.
+                          </p>
+                        ) : null}
+                        <div className="flex gap-3 pl-1">
+                          <button
+                            type="button"
+                            onClick={() => handleRefine('setting', s.id, s.description)}
+                            disabled={refiningIds.has(s.id) || (!project.script.trim() && !s.description.trim())}
+                            className="text-[12px] text-[var(--muted-foreground)] transition-colors hover:text-foreground disabled:opacity-40"
+                          >
+                            {refiningIds.has(s.id) ? 'Refining…' : 'Refine with AI ✦'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveSetting(s.id)}
+                            className="text-[12px] text-[var(--text-tertiary)] transition-colors hover:text-foreground"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                        {refineErrors[s.id] ? <p className="pl-1 text-xs text-destructive">{refineErrors[s.id]}</p> : null}
+                        {refineSuggestions[s.id] ? (
+                          <SuggestionCard
+                            suggestion={refineSuggestions[s.id]}
+                            onUse={() => {
+                              handleUpdateSetting(s.id, { description: refineSuggestions[s.id].refined })
+                              dismissSuggestion(s.id)
+                            }}
+                            onDismiss={() => dismissSuggestion(s.id)}
+                          />
+                        ) : null}
+                      </div>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={handleAddSetting}
+                      className="self-start text-[12px] text-[var(--text-tertiary)] transition-colors hover:text-foreground"
+                    >
+                      + Add setting
+                    </button>
+                    {detectError ? <p className="text-xs text-destructive">{detectError}</p> : null}
+                  </div>
 
                   <div className="mt-2 flex flex-col gap-1.5">
                     <p className="text-[11px] tracking-[0.18em] text-[var(--text-tertiary)]">STYLE</p>
@@ -719,10 +969,13 @@ export default function Home() {
                       onEditDescription={handleEditDescription}
                       onEditDuration={handleEditDuration}
                       onToggleCharacter={handleToggleCharacter}
+                      onSetLocation={handleSetLocation}
+                      onEditMotion={handleEditMotion}
                       onMove={handleMoveMoment}
                       onRender={handleRenderFrame}
                       onRegenerateImage={handleRegenerateImage}
                       onAnimate={handleAnimate}
+                      onAnimateAnchored={handleAnimateAnchored}
                       onReAnimate={handleReAnimate}
                       onSetConnectionMode={handleSetConnectionMode}
                       onGenerateBridge={handleGenerateBridge}
@@ -779,4 +1032,36 @@ function renderScriptSpans(project: Project, reduceMotion: boolean) {
   }
   if (cursor < script.length) nodes.push(<span key="tail">{script.slice(cursor)}</span>)
   return nodes
+}
+
+// Shared refine suggestion card (character + setting rows).
+function SuggestionCard({
+  suggestion,
+  onUse,
+  onDismiss,
+}: {
+  suggestion: { refined: string; notes: string[] }
+  onUse: () => void
+  onDismiss: () => void
+}) {
+  return (
+    <div className="flex flex-col gap-2 rounded-2xl border border-white/10 p-3">
+      <p className="text-sm">{suggestion.refined}</p>
+      {suggestion.notes.length > 0 ? (
+        <ul className="flex list-disc flex-col gap-1 pl-4 text-xs text-[var(--muted-foreground)]">
+          {suggestion.notes.map((note, i) => (
+            <li key={i}>{note}</li>
+          ))}
+        </ul>
+      ) : null}
+      <div className="flex gap-2">
+        <Button size="sm" onClick={onUse}>
+          Use this
+        </Button>
+        <Button size="sm" variant="ghost" onClick={onDismiss}>
+          Keep mine
+        </Button>
+      </div>
+    </div>
+  )
 }

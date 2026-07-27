@@ -1,6 +1,6 @@
 'use server'
 
-import { refineCharacter } from '@/lib/anthropic'
+import { refineCharacter, refineSetting } from '@/lib/anthropic'
 
 export type RefineCharacterResult =
   | { ok: true; refined: string; notes: string[] }
@@ -16,6 +16,25 @@ export async function refineCharacterDescription(
 
   try {
     const result = await refineCharacter(script, description)
+    return { ok: true, refined: result.refined, notes: result.notes }
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : 'Refinement failed. Please try again.',
+    }
+  }
+}
+
+export async function refineSettingDescription(
+  script: string,
+  description: string
+): Promise<RefineCharacterResult> {
+  if (!script.trim() && !description.trim()) {
+    return { ok: false, error: 'Add a script or a location description first.' }
+  }
+
+  try {
+    const result = await refineSetting(script, description)
     return { ok: true, refined: result.refined, notes: result.notes }
   } catch (err) {
     return {

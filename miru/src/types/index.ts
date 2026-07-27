@@ -23,6 +23,21 @@ export interface Moment {
   // editable in the inspector). Only these characters enter the image prompt.
   // undefined/null = legacy data → whole cast (old behavior). [] = deliberately no one.
   characterNames?: string[] | null
+  // Temporal split (fixes reversed-action renders): startFrame is the frozen instant the
+  // shot OPENS (drives the still), motion is the forward change (drives the clip),
+  // endFrame is the frozen closing instant (drives dual-keyframe animation). Legacy
+  // moments fall back to `description` for all three.
+  startFrame?: string | null
+  motion?: string | null
+  endFrame?: string | null
+  // Which Setting this shot takes place in (assigned by the breakdown from the provided
+  // settings list; editable in the inspector). null/undefined = unassigned.
+  locationName?: string | null
+  // Cached end-pose still for dual-keyframe animation (paid asset — kept once generated).
+  endImageUrl?: string | null
+  // Which model produced the current clip (provenance): Kling 1.6 single-frame or
+  // Kling O3 dual-keyframe. undefined = legacy → Kling 1.6.
+  videoModel?: 'kling-1.6' | 'kling-o3-anchored' | null
   imageUrl: string | null
   imagePrompt: string | null
   videoUrl: string | null
@@ -52,11 +67,20 @@ export interface Character {
   description: string
 }
 
+// A named location/setting. The breakdown may only place shots inside these, and the
+// assigned setting's description enters the image prompt — the location continuity layer.
+export interface Setting {
+  id: string
+  name: string
+  description: string
+}
+
 export interface Project {
   id: string
   title: string
   script: string
   characters: Character[]
+  settings: Setting[]         // established locations (normalize ?? [] when loading old data)
   stylePreset: StylePreset
   moments: Moment[]
   transitions: Transition[]   // sparse — only pairs the user has touched

@@ -20,22 +20,47 @@ const SHOT_LABELS: Record<ShotType, string> = {
 // shot label, moment description, consistency reminder, then the fixed format constraints.
 // characterDescription is the composed cast (see composeCharacterDescription) and may be
 // empty, in which case the segment is omitted rather than emitting "Main character: ".
+// `composition` should be the moment's startFrame (frozen opening instant) when
+// available — passing the full action-arc description makes the model render the
+// completed action, which is what caused reversed-motion clips. settingDescription
+// is the assigned Setting's description (location continuity); omitted when absent.
 export function buildImagePrompt(
   stylePreset: StylePreset,
   characterDescription: string,
   shotType: ShotType,
-  description: string
+  composition: string,
+  settingDescription?: string | null
 ): string {
   return [
     STYLE_PREFIXES[stylePreset],
     characterDescription.trim() ? `Main character${characterDescription.includes(';') ? 's' : ''}: ${characterDescription}` : null,
+    settingDescription?.trim() ? `Setting: ${settingDescription.trim()}` : null,
     SHOT_LABELS[shotType],
-    description,
+    composition,
     'maintain consistent character identity, facial features, hairstyle, wardrobe, color palette, lighting direction, and cinematic atmosphere from the previous image',
     'vertical 9:16 composition, portrait orientation, Instagram Reels format, no text or watermarks',
   ]
     .filter((segment): segment is string => segment !== null)
     .join('. ')
+}
+
+// Advisory (not blocking) — a description this thin tends to produce inconsistent
+// generations. Same bar the extraction prompt is validated against. Used for both
+// character and setting descriptions in compose.
+export function isDescriptionWeak(description: string): boolean {
+  const trimmed = description.trim()
+  if (!trimmed) return false // empty is a separate "not filled in" state, not "too weak"
+  const words = trimmed.split(/\s+/).filter(Boolean).length
+  return words < 8 || trimmed.length < 50
+}
+
+// The Setting assigned to a moment, or null when unassigned.
+export function settingForMoment<T extends { name: string }>(
+  settings: T[],
+  locationName: string | null | undefined
+): T | null {
+  if (!locationName) return null
+  return settings.find((s) => s.name.trim() === locationName.trim()) ?? null
 }
 
 // The cast that actually belongs in a given moment's frame. undefined/null assignment =
@@ -74,8 +99,16 @@ const SHOT_MOTION: Record<ShotType, string> = {
 // approved during design review. clipSeconds interpolates into the fixed suffix — the 5s
 // output is byte-identical to the originally validated prompt; 10s was smoke-tested
 // 2026-07-18 (test-kling-10s.js).
-export function buildVideoPrompt(shotType: ShotType, description: string, clipSeconds: 5 | 10 = 5): string {
-  return [`${SHOT_MOTION[shotType]}. Cinematic, smooth, ${clipSeconds} seconds.`, description].join('. ')
+// `motion` should be the moment's forward-motion field when available (falling back to
+// description for legacy moments). The first-frame preamble mirrors the validated bridge
+// prompt's framing and pins the supplied still as the point the action moves FORWARD from
+// — the other half of the reversed-action fix.
+export function buildVideoPrompt(shotType: ShotType, motion: string, clipSeconds: 5 | 10 = 5): string {
+  return [
+    'Begin exactly from the supplied first frame. The action moves forward from this pose, never backward:',
+    motion,
+    `${SHOT_MOTION[shotType]}. Cinematic, smooth, ${clipSeconds} seconds.`,
+  ].join(' ')
 }
 
 const BRIDGE_FALLBACK =

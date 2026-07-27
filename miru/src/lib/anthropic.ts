@@ -15,7 +15,11 @@ Schema:
       "description": "Visual description of what the camera sees. 1-2 sentences. Include subject, action, environment, mood, lighting. Written as a camera direction, not a script line.",
       "durationSeconds": 3,
       "scriptAnchor": "The alarm blares. Maya's eyes snap",
-      "characters": ["Maya"]
+      "characters": ["Maya"],
+      "startFrame": "Maya lies in bed with her eyes just snapped open, room dark, alarm clock glowing beside her",
+      "motion": "She sits up sharply and swings her legs off the bed; the camera holds steady at bedside height",
+      "endFrame": "Maya sits upright on the edge of the bed, feet on the floor, silhouetted against the window",
+      "location": "Maya's bedroom"
     }
   ]
 }
@@ -24,9 +28,13 @@ Rules:
 - durationSeconds must be 2-10. Size each moment by its content: a quick action beat runs 2-3 seconds; a lingering emotional or atmospheric beat can run up to 10.
 - scriptAnchor is the VERBATIM first 4-8 words of the passage of the ORIGINAL script this moment is drawn from — copied character-for-character (same punctuation, same capitalization), never paraphrased. Anchors must appear in the same order as the script. If a moment has no contiguous source passage, use null for scriptAnchor instead of guessing.
 - characters lists which members of the provided CAST are VISIBLY PRESENT in this moment's frame — only names from the cast list, spelled exactly as given. A close-up of one person lists only that person. Use [] for moments where no cast member is on screen (empty environments, objects, inserts). If no cast list is provided, always use [].
+- startFrame and endFrame are STILL descriptions: the exact frozen instant the shot OPENS (before any of the shot's action has occurred) and the frozen instant it CLOSES (after the action completes). Write both as static compositions — what a paused frame shows: subject placement, pose, expression, environment. Never write them as ongoing narration.
+- motion describes only what CHANGES between startFrame and endFrame, as forward progression: the subject's action first, then camera movement. Never restate the composition.
+- location names which entry from the provided SETTINGS list this shot takes place in — copy the setting's name exactly as spelled in the list. Strongly PREFER an existing setting: different phrasings of the same physical place ("outside the pharmacy", "pharmacy entrance", "the parking lot in front of the pharmacy") all resolve to the SAME setting. Multiple shots in one place must share one setting name. Assign every shot to a provided setting unless no setting could plausibly contain it; only then use null. Never invent a location outside the list.
 - Descriptions must be visual and specific. Not 'she looks sad' - 'a young woman stares out a rain-streaked window, her reflection ghostly against the dark street below.'
 - First moment must be a strong visual hook.
 - Distribute shot types naturally across the breakdown.
+- Every moment must include ALL schema fields: number, shotType, description, durationSeconds, scriptAnchor, characters, startFrame, motion, endFrame, location. Never omit a field.
 - Never return anything outside the JSON object.
 - Do not wrap the JSON in a code block (no \`\`\`json or \`\`\`). Your entire response must be the raw JSON object, starting with { and ending with }.`
 
@@ -41,6 +49,12 @@ export interface BreakdownMoment {
   durationSeconds: number
   // Which provided cast members are visibly present in this moment's frame.
   characters?: string[]
+  // Temporal split: frozen opening composition / forward change / frozen closing composition.
+  startFrame?: string | null
+  motion?: string | null
+  endFrame?: string | null
+  // Which provided setting this shot takes place in (null when none provided/fits).
+  location?: string | null
   scriptAnchor?: string | null
   // Derived server-side from scriptAnchor via whitespace-tolerant in-order matching —
   // never trusted from the model directly (models can't do character arithmetic).
@@ -69,7 +83,9 @@ async function callClaude(system: string, userContent: string, retry: boolean): 
     },
     body: JSON.stringify({
       model: 'claude-sonnet-4-6',
-      max_tokens: 2000,
+      // The breakdown's per-moment fields (startFrame/motion/endFrame/…) make responses
+      // ~3× longer than the original schema; 2000 truncated mid-JSON on 10-12 moments.
+      max_tokens: 6000,
       system,
       messages,
     }),
@@ -195,13 +211,20 @@ function resolveScriptSpans(script: string, moments: BreakdownMoment[]): void {
 
 export async function breakdownMoments(
   script: string,
-  cast: { name: string; description: string }[] = []
+  cast: { name: string; description: string }[] = [],
+  settings: { name: string; description: string }[] = []
 ): Promise<MomentBreakdownResult> {
   const describedCast = cast.filter((c) => c.name.trim() && c.description.trim())
-  const userContent =
-    describedCast.length > 0
-      ? `CAST:\n${describedCast.map((c) => `${c.name.trim()} — ${c.description.trim()}`).join('\n')}\n\nSCRIPT:\n${script}`
-      : script
+  const describedSettings = settings.filter((s) => s.name.trim() && s.description.trim())
+  const blocks: string[] = []
+  if (describedCast.length > 0) {
+    blocks.push(`CAST:\n${describedCast.map((c) => `${c.name.trim()} — ${c.description.trim()}`).join('\n')}`)
+  }
+  if (describedSettings.length > 0) {
+    blocks.push(`SETTINGS:\n${describedSettings.map((s) => `${s.name.trim()} — ${s.description.trim()}`).join('\n')}`)
+  }
+  blocks.push(blocks.length > 0 ? `SCRIPT:\n${script}` : script)
+  const userContent = blocks.join('\n\n')
 
   const parsed = await callAndParse(
     SYSTEM_PROMPT,
@@ -219,13 +242,99 @@ export async function breakdownMoments(
 
   // Keep only names that actually exist in the cast — a hallucinated name silently drops.
   const knownNames = new Set(describedCast.map((c) => c.name.trim()))
+  const settingNames = describedSettings.map((s) => s.name.trim())
   for (const moment of result.moments) {
     moment.characters = Array.isArray(moment.characters)
       ? moment.characters.filter((n) => knownNames.has(n))
       : []
+    // Resolve the model's location phrasing to a real setting (exact → normalized →
+    // single distinctive-token match); ambiguous or none → null (never a wrong guess).
+    moment.location = resolveSettingName(moment.location, settingNames)
   }
 
   return result
+}
+
+// Deterministic scene→setting resolver (validated in
+// scenelab-api-test/test-fuzzy-setting.js). Accepts a fuzzy match only when it identifies
+// exactly ONE candidate; genuine ambiguity returns null rather than guessing.
+const RESOLVE_STOPWORDS = new Set([
+  'the', 'a', 'an', 'of', 'in', 'on', 'at', 'to', 'and', 'inside', 'outside', 'near',
+  'by', 'behind', 'front', 'into', 'out', 'up', 'down', 'over', 'under', 'is', 'it',
+])
+
+function distinctiveTokens(s: string): Set<string> {
+  return new Set(
+    s
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .split(/\s+/)
+      .filter((w) => w.length > 2 && !RESOLVE_STOPWORDS.has(w))
+  )
+}
+
+export function resolveSettingName(location: unknown, settingNames: string[]): string | null {
+  if (typeof location !== 'string' || !location.trim() || settingNames.length === 0) return null
+  const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, ' ')
+  const target = norm(location)
+
+  const exact = settingNames.find((n) => norm(n) === target)
+  if (exact) return exact
+
+  const contains = settingNames.filter((n) => norm(n).includes(target) || target.includes(norm(n)))
+  if (contains.length === 1) return contains[0]
+
+  const locTokens = distinctiveTokens(location)
+  const overlaps = settingNames.filter((n) => {
+    const st = distinctiveTokens(n)
+    for (const t of locTokens) if (st.has(t)) return true
+    return false
+  })
+  return overlaps.length === 1 ? overlaps[0] : null
+}
+
+// ---- Auto-population: extract cast + settings from a raw script ----
+// Ported from personalprojects/scenelab-api-test/test-extract-context.js (3/3 cases pass:
+// render-ready descriptions, unnamed-character handling, location merging).
+const EXTRACT_SYSTEM_PROMPT = `You are a script breakdown assistant for an AI storyboard tool. Given a short-form video script, extract two things: the CHARACTERS (every speaking or visually important person/being) and the SETTINGS (every distinct physical location). Return ONLY valid JSON - no explanation, no markdown, no code fences.
+
+Schema:
+{
+  "characters": [
+    { "name": "Maya", "description": "Late-20s woman, dark bob haircut, oversized cream sweater, anxious sharp features, pale complexion, muted cool-toned palette" }
+  ],
+  "settings": [
+    { "name": "Maya's apartment", "description": "Cramped top-floor walk-up at night, warm lamp light, rain-streaked windows, cluttered desk, worn wooden floors" }
+  ]
+}
+
+Rules:
+- Name characters as the script names them; invent a short descriptive name only if unnamed (e.g. "The stranger"). Never duplicate a character.
+- Each character description is render-ready: 15-45 words of VISUAL attributes only — approximate age, build, hair, wardrobe with colors, one distinguishing feature, overall palette. Never a bare noun phrase like "young woman". No backstory, no personality, no art-style words.
+- Merge locations that are the same physical place under ONE setting, even if the script phrases them differently ("outside the pharmacy", "pharmacy entrance", "parking lot outside pharmacy" are all one setting). Give each a clear name and a 15-45 word visual description: light, time of day, condition, atmosphere, notable objects.
+- If the script clearly has no distinct characters (pure landscape) or one location, return the minimal true set — do not invent.
+- Never return anything outside the JSON object. Do not wrap it in a code block.`
+
+export interface ExtractedContext {
+  characters: { name: string; description: string }[]
+  settings: { name: string; description: string }[]
+}
+
+export async function extractContext(script: string): Promise<ExtractedContext> {
+  const parsed = (await callAndParse(
+    EXTRACT_SYSTEM_PROMPT,
+    script,
+    "We couldn't detect characters and settings from that script. Please try again."
+  )) as ExtractedContext
+
+  if (!Array.isArray(parsed.characters) || !Array.isArray(parsed.settings)) {
+    throw new Error("We couldn't detect characters and settings from that script. Please try again.")
+  }
+  const clean = (arr: { name?: unknown; description?: unknown }[]) =>
+    arr
+      .filter((e) => typeof e.name === 'string' && e.name.trim() && typeof e.description === 'string' && e.description.trim())
+      .map((e) => ({ name: (e.name as string).trim(), description: (e.description as string).trim() }))
+  return { characters: clean(parsed.characters), settings: clean(parsed.settings) }
 }
 
 // Ported from personalprojects/scenelab-api-test/test-character-refine.js — validated
@@ -260,6 +369,38 @@ export async function refineCharacter(script: string, description: string): Prom
 
   if (typeof parsed.refined !== 'string' || !parsed.refined.trim() || !Array.isArray(parsed.notes)) {
     throw new Error("We couldn't refine the character description. Please try again.")
+  }
+
+  return { refined: parsed.refined.trim(), notes: parsed.notes.slice(0, 4) }
+}
+
+// Setting variant of the refine flow — same structure, tuned for place/atmosphere
+// (light, time, condition, notable objects) instead of wardrobe/features.
+const REFINE_SETTING_SYSTEM_PROMPT = `You are a location scout for AI-generated storyboards. Given a video script and the user's location description, rewrite it so the same place renders consistently across many independently generated frames. Return ONLY valid JSON - no explanation, no markdown, no code fences.
+
+Schema:
+{
+  "refined": "The rewritten location description",
+  "notes": ["1-3 short notes explaining what you added or tightened and why"]
+}
+
+Rules:
+- Preserve every concrete visual detail the user gave (place type, time of day, condition, objects). Never contradict or drop one.
+- Add only what improves cross-frame consistency: lighting quality and source, time of day, weather/condition, overall palette, and one or two distinctive fixed objects or architectural features. Prefer details the script implies; invent as little as possible.
+- Write the refined description as comma-separated visual descriptors, 20-55 words, no people (describe the empty place).
+- Visual facts only: no story, no camera directions, no art-style words (no "anime", "cinematic" - the app adds style separately).
+- notes must be brief and user-facing.
+- Never return anything outside the JSON object. Do not wrap the JSON in a code block.`
+
+export async function refineSetting(script: string, description: string): Promise<CharacterRefinement> {
+  const parsed = (await callAndParse(
+    REFINE_SETTING_SYSTEM_PROMPT,
+    `Script:\n${script}\n\nUser's location description:\n${description}`,
+    "We couldn't refine the location description. Please try again."
+  )) as CharacterRefinement
+
+  if (typeof parsed.refined !== 'string' || !parsed.refined.trim() || !Array.isArray(parsed.notes)) {
+    throw new Error("We couldn't refine the location description. Please try again.")
   }
 
   return { refined: parsed.refined.trim(), notes: parsed.notes.slice(0, 4) }

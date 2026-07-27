@@ -13,7 +13,9 @@ export async function generateMomentImage(
   stylePreset: StylePreset,
   characterDescription: string,
   // Inspector-edited prompt: used verbatim when provided, bypassing buildImagePrompt.
-  promptOverride?: string | null
+  promptOverride?: string | null,
+  // The assigned Setting's description (location continuity segment).
+  settingDescription?: string | null
 ): Promise<GenerateImageResult> {
   // If an image already exists for this moment, return it instantly rather than re-calling the API.
   if (moment.imageUrl) {
@@ -21,8 +23,16 @@ export async function generateMomentImage(
   }
 
   try {
+    // startFrame (frozen opening instant) drives the still; description is the legacy fallback.
     const imagePrompt =
-      promptOverride?.trim() || buildImagePrompt(stylePreset, characterDescription, moment.shotType, moment.description)
+      promptOverride?.trim() ||
+      buildImagePrompt(
+        stylePreset,
+        characterDescription,
+        moment.shotType,
+        moment.startFrame ?? moment.description,
+        settingDescription
+      )
     const imageUrl = await generateImage(imagePrompt)
     return { ok: true, imageUrl, imagePrompt }
   } catch (err) {

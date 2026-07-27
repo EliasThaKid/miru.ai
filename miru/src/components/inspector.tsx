@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
-import { buildImagePrompt, castForMoment, composeCharacterDescription } from '@/lib/prompts'
+import { buildImagePrompt, castForMoment, composeCharacterDescription, settingForMoment } from '@/lib/prompts'
 import type { ConnectionMode, Moment, Project, Transition } from '@/types'
 import type { JointStatus, ReviewSelection, SlotStatus } from '@/components/review-strip'
 
@@ -29,10 +29,13 @@ interface InspectorProps {
   onEditDescription: (momentId: string, description: string) => void
   onEditDuration: (momentId: string, durationSeconds: number) => void
   onToggleCharacter: (momentId: string, name: string) => void
+  onSetLocation: (momentId: string, locationName: string | null) => void
+  onEditMotion: (momentId: string, motion: string) => void
   onMove: (momentId: string, direction: -1 | 1) => void
   onRender: (moment: Moment) => void
   onRegenerateImage: (moment: Moment) => void
   onAnimate: (moment: Moment) => void
+  onAnimateAnchored: (moment: Moment) => void
   onReAnimate: (moment: Moment) => void
   onSetConnectionMode: (from: Moment, to: Moment, mode: ConnectionMode) => void
   onGenerateBridge: (from: Moment, to: Moment, direction: string, regenerate: boolean) => void
@@ -61,10 +64,13 @@ function FrameInspector({
   onEditDescription,
   onEditDuration,
   onToggleCharacter,
+  onSetLocation,
+  onEditMotion,
   onMove,
   onRender,
   onRegenerateImage,
   onAnimate,
+  onAnimateAnchored,
   onReAnimate,
   errors,
 }: InspectorProps & { moment: Moment }) {
@@ -72,9 +78,16 @@ function FrameInspector({
   const index = project.moments.findIndex((m) => m.id === moment.id)
   const longClip = moment.durationSeconds >= 8
   const momentCast = castForMoment(project.characters, moment.characterNames)
+  const momentSetting = settingForMoment(project.settings, moment.locationName)
   const effectivePrompt =
     moment.imagePrompt ??
-    buildImagePrompt(project.stylePreset, composeCharacterDescription(momentCast), moment.shotType, moment.description)
+    buildImagePrompt(
+      project.stylePreset,
+      composeCharacterDescription(momentCast),
+      moment.shotType,
+      moment.startFrame ?? moment.description,
+      momentSetting?.description ?? null
+    )
 
   return (
     <div className="flex w-72 shrink-0 flex-col gap-5">
@@ -124,6 +137,28 @@ function FrameInspector({
         </div>
       </div>
 
+      {project.settings.length > 0 ? (
+        <div className="flex flex-col gap-1.5">
+          <p className={LABEL}>LOCATION</p>
+          <Select
+            value={moment.locationName ?? '__none__'}
+            onValueChange={(value) => onSetLocation(moment.id, value === '__none__' ? null : value)}
+          >
+            <SelectTrigger className="w-full" size="sm">
+              <SelectValue>{momentSetting?.name ?? 'Unassigned'}</SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__none__">Unassigned</SelectItem>
+              {project.settings.map((s) => (
+                <SelectItem key={s.id} value={s.name}>
+                  {s.name.trim() || 'Unnamed'}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      ) : null}
+
       {project.characters.length > 0 ? (
         <div className="flex flex-col gap-1.5">
           <p className={LABEL}>CAST IN FRAME</p>
@@ -162,6 +197,18 @@ function FrameInspector({
       </div>
 
       <div className="flex flex-col gap-1.5">
+        <p className={LABEL}>MOTION</p>
+        <Textarea
+          value={moment.motion ?? ''}
+          onChange={(e) => onEditMotion(moment.id, e.target.value)}
+          rows={2}
+          placeholder="What changes during the shot (forward from the start frame)"
+          className="field-sizing-content max-h-32 min-h-12 text-[12px]"
+          aria-label="Moment motion"
+        />
+      </div>
+
+      <div className="flex flex-col gap-1.5">
         <p className={LABEL}>PROMPT</p>
         <Textarea
           value={effectivePrompt}
@@ -176,7 +223,10 @@ function FrameInspector({
         <p className={LABEL}>GENERATION</p>
         {moment.videoUrl ? (
           <>
-            <p className={PROVENANCE}>Kling 1.6 · animated {formatWhen(moment.videoGeneratedAt)}</p>
+            <p className={PROVENANCE}>
+              {moment.videoModel === 'kling-o3-anchored' ? 'Kling O3 · dual keyframe' : 'Kling 1.6'} · animated{' '}
+              {formatWhen(moment.videoGeneratedAt)}
+            </p>
             <p className={PROVENANCE}>FLUX 1.1 Pro · still {formatWhen(moment.imageGeneratedAt)}</p>
           </>
         ) : moment.imageUrl ? (
@@ -196,9 +246,21 @@ function FrameInspector({
                 {status === 'rendering' ? 'Rendering…' : 'Regenerate frame'}
               </button>
               {!moment.videoUrl ? (
-                <button type="button" className={ACTION} onClick={() => onAnimate(moment)}>
-                  {longClip ? 'Animate ✦ Kling 1.6 · 10s clip (~4-8 min)' : 'Animate ✦ Kling 1.6 · 5s clip (~2-5 min)'}
-                </button>
+                <>
+                  <button type="button" className={ACTION} onClick={() => onAnimate(moment)}>
+                    {longClip ? 'Animate ✦ Kling 1.6 · 10s clip (~4-8 min)' : 'Animate ✦ Kling 1.6 · 5s clip (~2-5 min)'}
+                  </button>
+                  {!longClip ? (
+                    <button
+                      type="button"
+                      className={ACTION}
+                      onClick={() => onAnimateAnchored(moment)}
+                      title="Renders the shot's end pose as a second still, then animates start→end with Kling O3 — action can't play backward"
+                    >
+                      Animate with end frame ✦✦ Kling O3 (~2-4 min)
+                    </button>
+                  ) : null}
+                </>
               ) : (
                 <button type="button" className={ACTION} onClick={() => onReAnimate(moment)}>
                   Re-Animate ✦

@@ -193,10 +193,22 @@ interface Project {
   retry once with an explicit "return ONLY the JSON object" reminder before surfacing an
   error to the user. The prompt was revised for the rebrand on 2026-07-17 and re-validated
   against `scenelab-api-test/test-scene-breakdown.js` (9/9 consistency runs + 3 edge cases).
+- **Temporal split (2026-07-19, fixes reversed-action clips):** the breakdown returns
+  per-moment `startFrame` (frozen opening composition), `motion` (forward change only),
+  and `endFrame` (frozen closing composition). The STILL is built from `startFrame`; the
+  CLIP prompt is built from `motion` with a "Begin exactly from the supplied first frame…
+  never backward" preamble. Never feed the full action-arc `description` to both models —
+  that was the root cause of reversed action staging. Legacy moments fall back to
+  `description`. `motion` is editable in the inspector.
+- **Settings layer (2026-07-19, fixes location drift):** `Project.settings: Setting[]`
+  (name + description, compose-side editor; normalize `?? []` on old saves). The breakdown
+  receives a SETTINGS block and may only place shots inside it (per-moment `location`,
+  invented names degrade to null server-side); the assigned setting's description enters
+  the image prompt as a `Setting:` segment. Inspector LOCATION select overrides per moment.
 - Image generation (FAL.ai FLUX, `fal-ai/flux-pro/v1.1`): always 9:16 vertical. Prompts are
   built via `buildImagePrompt()` in `lib/prompts.ts` — style prefix + character description
-  + shot label + moment description. Never generate images in parallel; sequential only, to
-  avoid rate spikes.
+  + setting + shot label + startFrame composition. Never generate images in parallel;
+  sequential only, to avoid rate spikes.
 - Moment animation (FAL.ai Kling 1.6): always opt-in per moment, triggered only from the
   inspector. Never auto-triggered on image generation. If `moment.videoUrl` already
   exists, return it instantly — do not re-call the API. Clip length maps from
@@ -204,6 +216,12 @@ interface Project {
   (`test-kling.js` 2026-07-16; `test-kling-10s.js` 2026-07-18, live clip measured 10.43s).
   No other duration values are validated. `durationSeconds` is editable in the inspector
   (−/+ stepper, 2-10); editing it keeps an existing clip — Re-Animate to match.
+- **Anchored animation (opt-in, 5s moments only):** "Animate with end frame ✦✦" renders
+  the moment's `endFrame` as a second still (cached in `moment.endImageUrl` — paid asset,
+  reused) and animates start→end with Kling O3 dual keyframe
+  (`generate-anchored-video.ts`) — reversed staging becomes structurally impossible.
+  Provenance: `moment.videoModel` ('kling-1.6' | 'kling-o3-anchored'). Not offered for
+  10s moments (O3 unvalidated at 10s).
 - Generated Bridge (FAL.ai Kling O3 Standard, dual-keyframe,
   `fal-ai/kling-video/o3/standard/image-to-video` — validated live 2026-07-16, ~60s):
   always opt-in, always between two *adjacent* moments that both already have generated
@@ -230,9 +248,26 @@ interface Project {
   cast is empty. Character refinement ("Refine with AI ✦", per tab): Claude rewrites that
   character's description into a visual-consistency descriptor (attributes preserved,
   25-60 words, no style words) plus user-facing notes. Always suggest-then-accept — never
-  overwrite without an explicit "Use this" click; the suggestion is pinned to the
-  character it was generated for. Prompt validated in
-  `scenelab-api-test/test-character-refine.js` (2026-07-18); revise there first.
+  overwrite without an explicit "Use this" click. Prompt validated in
+  `scenelab-api-test/test-character-refine.js`; settings have the same "Refine with AI ✦"
+  (`refineSetting`, tuned for place/atmosphere). **Refine is per-entity** — `refiningIds`
+  Set + `refineSuggestions`/`refineErrors` maps keyed by id, so one card refining never
+  loads/rerenders another and concurrent refines land on the right entity. Shared
+  `SuggestionCard` renders both.
+- **Auto-population (2026-07-28):** on a substantial script paste into empty panels,
+  `extractContext()` (validated in `scenelab-api-test/test-extract-context.js`) infers the
+  full cast + settings with render-ready descriptions — the user arrives at a populated
+  project. Fires once per distinct script (`autoDetectedForRef`), never overwrites
+  non-empty panels. Generate has a synchronous fallback that populates if still empty.
+  Manual "Re-detect ✦" re-runs and REPLACES. Client-side `isDescriptionWeak()` shows an
+  advisory (`< 8 words / < 50 chars`) under thin character/setting descriptions —
+  advisory, never blocking.
+- **Location mapping (2026-07-28):** the breakdown's location rule strongly prefers
+  existing settings and treats differently-phrased references to one physical place as the
+  same setting. Server-side `resolveSettingName()` (validated
+  `scenelab-api-test/test-fuzzy-setting.js`) maps the model's phrasing to a real setting:
+  exact → normalized-contains → single distinctive-token overlap; genuine ambiguity → null
+  (never a wrong guess).
 - Hard Cut, Dissolve, and Fade to Black are not AI calls: selecting any of them must make
   zero network requests. Dissolve/fade are rendered by the animatic player at playback time.
 - Every AI call must handle failure with a human-readable, user-facing error and a retry
