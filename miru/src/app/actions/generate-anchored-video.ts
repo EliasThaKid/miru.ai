@@ -16,7 +16,8 @@ export async function generateAnchoredMomentVideo(
   moment: Moment,
   stylePreset: StylePreset,
   characterDescription: string,
-  settingDescription?: string | null
+  settingDescription?: string | null,
+  characterNames: string[] = []
 ): Promise<GenerateAnchoredVideoResult> {
   if (!moment.imageUrl) {
     return { ok: false, error: 'Render the frame first — anchored animation starts from it.' }
@@ -35,7 +36,10 @@ export async function generateAnchoredMomentVideo(
           characterDescription,
           moment.shotType,
           moment.endFrame ?? moment.description,
-          settingDescription
+          settingDescription,
+          characterNames,
+          moment.visualFocus,
+          moment.blocking
         )
       )
     }

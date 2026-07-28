@@ -4,8 +4,15 @@ import { useState } from 'react'
 import { Input } from '@/components/ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
-import { buildImagePrompt, castForMoment, composeCharacterDescription, settingForMoment } from '@/lib/prompts'
-import type { ConnectionMode, Moment, Project, Transition } from '@/types'
+import {
+  buildImagePrompt,
+  castForMoment,
+  composeCharacterDescription,
+  focusShowsCharacters,
+  settingForMoment,
+  visualFocusForMoment,
+} from '@/lib/prompts'
+import type { ConnectionMode, Moment, Project, Transition, VisualFocus } from '@/types'
 import type { JointStatus, ReviewSelection, SlotStatus } from '@/components/review-strip'
 
 const CONNECTION_MODES: { value: ConnectionMode; label: string }[] = [
@@ -14,6 +21,15 @@ const CONNECTION_MODES: { value: ConnectionMode; label: string }[] = [
   { value: 'fade-to-black', label: 'Fade to Black' },
   { value: 'generated-bridge', label: 'Generated Bridge ✦' },
 ]
+
+const FOCUS_OPTIONS: VisualFocus[] = ['character', 'multiple_characters', 'object', 'environment', 'mixed']
+const FOCUS_LABELS: Record<VisualFocus, string> = {
+  character: 'Character',
+  multiple_characters: 'Multiple characters',
+  object: 'Object / insert',
+  environment: 'Environment',
+  mixed: 'Mixed (person + object)',
+}
 
 const LABEL = 'text-[11px] tracking-[0.18em] text-[var(--text-tertiary)]'
 const PROVENANCE = 'text-[12px] text-[var(--text-tertiary)]'
@@ -26,9 +42,12 @@ interface InspectorProps {
   slotStatus: (moment: Moment) => SlotStatus
   jointStatus: (from: Moment, to: Moment) => JointStatus
   onEditPrompt: (momentId: string, prompt: string) => void
+  onResetPrompt: (momentId: string) => void
   onEditDescription: (momentId: string, description: string) => void
   onEditDuration: (momentId: string, durationSeconds: number) => void
   onToggleCharacter: (momentId: string, name: string) => void
+  onSetFocus: (momentId: string, focus: VisualFocus) => void
+  onEditAvoid: (momentId: string, avoidCsv: string) => void
   onSetLocation: (momentId: string, locationName: string | null) => void
   onEditMotion: (momentId: string, motion: string) => void
   onMove: (momentId: string, direction: -1 | 1) => void
@@ -61,9 +80,12 @@ function FrameInspector({
   project,
   slotStatus,
   onEditPrompt,
+  onResetPrompt,
   onEditDescription,
   onEditDuration,
   onToggleCharacter,
+  onSetFocus,
+  onEditAvoid,
   onSetLocation,
   onEditMotion,
   onMove,
@@ -79,15 +101,26 @@ function FrameInspector({
   const longClip = moment.durationSeconds >= 8
   const momentCast = castForMoment(project.characters, moment.characterNames)
   const momentSetting = settingForMoment(project.settings, moment.locationName)
-  const effectivePrompt =
-    moment.imagePrompt ??
-    buildImagePrompt(
-      project.stylePreset,
-      composeCharacterDescription(momentCast),
-      moment.shotType,
-      moment.startFrame ?? moment.description,
-      momentSetting?.description ?? null
-    )
+  const effectiveFocus = visualFocusForMoment(moment.visualFocus, momentCast.length)
+  const showsCharacters = focusShowsCharacters(effectiveFocus)
+  // Always freshly composed from CURRENT cast/setting/startFrame so the preview tracks
+  // toggles live. The stored provenance prompt (moment.imagePrompt) is never shown here —
+  // it would silently freeze the preview at the last generation.
+  const autoPrompt = buildImagePrompt(
+    project.stylePreset,
+    composeCharacterDescription(momentCast),
+    moment.shotType,
+    moment.startFrame ?? moment.description,
+    momentSetting?.description ?? null,
+    momentCast.map((c) => c.name),
+    moment.visualFocus,
+    moment.blocking
+  )
+  const override = moment.userPromptOverride?.trim() ? moment.userPromptOverride : null
+  // The field shows the override when one exists (that is what renders), otherwise the
+  // live auto-composed prompt (editing it authors an override).
+  const promptValue = override ?? autoPrompt
+  const overrideStale = !!override && !!moment.userPromptOverrideStale
 
   return (
     <div className="flex w-72 shrink-0 flex-col gap-5">
@@ -137,6 +170,22 @@ function FrameInspector({
         </div>
       </div>
 
+      <div className="flex flex-col gap-1.5">
+        <p className={LABEL}>FOCUS</p>
+        <Select value={effectiveFocus} onValueChange={(value) => onSetFocus(moment.id, value as VisualFocus)}>
+          <SelectTrigger className="w-full" size="sm">
+            <SelectValue>{FOCUS_LABELS[effectiveFocus]}</SelectValue>
+          </SelectTrigger>
+          <SelectContent>
+            {FOCUS_OPTIONS.map((f) => (
+              <SelectItem key={f} value={f}>
+                {FOCUS_LABELS[f]}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
       {project.settings.length > 0 ? (
         <div className="flex flex-col gap-1.5">
           <p className={LABEL}>LOCATION</p>
@@ -159,7 +208,7 @@ function FrameInspector({
         </div>
       ) : null}
 
-      {project.characters.length > 0 ? (
+      {project.characters.length > 0 && showsCharacters ? (
         <div className="flex flex-col gap-1.5">
           <p className={LABEL}>CAST IN FRAME</p>
           <div className="flex flex-wrap gap-1.5">
@@ -183,7 +232,38 @@ function FrameInspector({
             })}
           </div>
         </div>
+      ) : project.characters.length > 0 ? (
+        <p className="text-[12px] text-[var(--text-tertiary)]">
+          {effectiveFocus === 'environment' ? 'Environment shot — no cast in this frame.' : 'Object shot — no cast in this frame.'}
+        </p>
       ) : null}
+
+      <div className="flex flex-col gap-1.5">
+        <p className={LABEL}>COMPOSITION</p>
+        {moment.blocking ? (
+          <div className="flex flex-col gap-0.5 text-[12px] text-[var(--muted-foreground)]">
+            {moment.blocking.focalAction ? <p>Action: {moment.blocking.focalAction}</p> : null}
+            {moment.blocking.actionPhase ? <p className={PROVENANCE}>Phase: {moment.blocking.actionPhase.replace(/_/g, ' ')}</p> : null}
+            {(moment.blocking.subjects ?? []).map((s, i) => (
+              <p key={i} className={PROVENANCE}>
+                {(s.name || 'figure')}: {s.visibility.replace(/_/g, ' ')} · {s.depth.replace(/_/g, ' ')} · {s.screenRegion.replace(/_/g, ' ')}
+              </p>
+            ))}
+            {(moment.blocking.objectPhysics ?? []).map((o, i) => (
+              <p key={i} className={PROVENANCE}>
+                {o.item}{o.symmetry === 'avoid' ? ' · asymmetric' : ''}
+              </p>
+            ))}
+          </div>
+        ) : (
+          <p className={PROVENANCE}>No blocking plan — using shot-label composition.</p>
+        )}
+        <AvoidField
+          key={moment.id}
+          initial={(moment.blocking?.avoid ?? []).join(', ')}
+          onCommit={(raw) => onEditAvoid(moment.id, raw)}
+        />
+      </div>
 
       <div className="flex flex-col gap-1.5">
         <p className={LABEL}>DESCRIPTION</p>
@@ -209,9 +289,26 @@ function FrameInspector({
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <p className={LABEL}>PROMPT</p>
+        <div className="flex items-center justify-between">
+          <p className={LABEL}>PROMPT{override ? ' · OVERRIDE' : ''}</p>
+          {override ? (
+            <button
+              type="button"
+              onClick={() => onResetPrompt(moment.id)}
+              className="text-[11px] text-[var(--muted-foreground)] transition-colors hover:text-foreground"
+            >
+              Reset to auto ↺
+            </button>
+          ) : null}
+        </div>
+        {overrideStale ? (
+          <p className="text-[11px] leading-snug text-[var(--destructive)]">
+            This override was written before you changed the cast or location — it no longer
+            reflects the current selections. Reset to auto, or edit it to keep it.
+          </p>
+        ) : null}
         <Textarea
-          value={effectivePrompt}
+          value={promptValue}
           onChange={(e) => onEditPrompt(moment.id, e.target.value)}
           rows={6}
           className="field-sizing-content max-h-60 min-h-24 text-[12px]"
@@ -273,6 +370,23 @@ function FrameInspector({
         {errors.video ? <p className="text-[12px] text-destructive">{errors.video}</p> : null}
       </div>
     </div>
+  )
+}
+
+// Raw-draft text field for the composition Avoid list. Keeps the typed string verbatim
+// (trailing spaces, multi-word phrases) and only commits — where it is normalized — on blur.
+// Keyed by moment id at the call site so switching moments re-seeds the draft.
+function AvoidField({ initial, onCommit }: { initial: string; onCommit: (raw: string) => void }) {
+  const [draft, setDraft] = useState(initial)
+  return (
+    <Input
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onBlur={() => onCommit(draft)}
+      placeholder="Avoid (comma-separated): symmetrical two-shot, posed portrait…"
+      className="text-[12px]"
+      aria-label="Composition avoid list"
+    />
   )
 }
 

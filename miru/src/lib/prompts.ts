@@ -1,4 +1,16 @@
-import type { ShotType, StylePreset } from '@/types'
+import type {
+  ActionPhase,
+  BodyOrientation,
+  DepthPlane,
+  MomentBlocking,
+  ObjectPhysics,
+  ScreenRegion,
+  ShotType,
+  StylePreset,
+  SubjectBlocking,
+  VisibilityMode,
+  VisualFocus,
+} from '@/types'
 
 const STYLE_PREFIXES: Record<StylePreset, string> = {
   cinematic: 'cinematic photography, 35mm film grain, dramatic chiaroscuro lighting, shallow depth of field, subtle anamorphic lens flare',
@@ -15,33 +27,473 @@ const SHOT_LABELS: Record<ShotType, string> = {
   'over-the-shoulder': 'over-the-shoulder shot, subject framed past a foreground figure',
 }
 
-// Mirrors the prompt structure smoke-tested in
-// personalprojects/scenelab-api-test/test-flux.js: style prefix, character description(s),
-// shot label, moment description, consistency reminder, then the fixed format constraints.
-// characterDescription is the composed cast (see composeCharacterDescription) and may be
-// empty, in which case the segment is omitted rather than emitting "Main character: ".
-// `composition` should be the moment's startFrame (frozen opening instant) when
-// available — passing the full action-arc description makes the model render the
-// completed action, which is what caused reversed-motion clips. settingDescription
-// is the assigned Setting's description (location continuity); omitted when absent.
+// Object-focus framing: insert/detail terminology, never the person-implying word "subject".
+// Deliberately off-center rather than "centered" — centering pushed the model toward
+// symmetrical, catalog-style presentation of the object.
+const OBJECT_SHOT_LABELS: Record<ShotType, string> = {
+  wide: 'wide insert shot, the object shown within its surroundings',
+  medium: 'insert shot, the object framed prominently and off-center',
+  'close-up': 'tight insert detail shot on the object, framed off-center, no person in frame',
+  pov: 'point-of-view insert, the object seen as a person would look at it, no person visible',
+  'over-the-shoulder': 'insert detail shot past a foreground element, focus on the object',
+}
+
+// Environment-focus framing: an empty location, explicitly no people.
+const ENVIRONMENT_SHOT_LABELS: Record<ShotType, string> = {
+  wide: 'wide establishing shot of the empty location, no people present',
+  medium: 'shot of the location itself, no people present',
+  'close-up': 'close detail of the environment, no people present',
+  pov: 'point-of-view shot across the empty space, no people present',
+  'over-the-shoulder': 'establishing shot of the location, no people present',
+}
+
+// Identity continuity is APPEARANCE ONLY, and makes NO claim of a prior reference: no image
+// is passed to the model, so it must not say "from the previous image" or "the established
+// cast" (both imply a reference that does not exist). It only asks for internal consistency.
+const CHARACTER_CONTINUITY =
+  'render each character with one consistent identity throughout — the same skin tone, hairstyle, and wardrobe as their anchors above — matching appearance and lighting only, never their pose, placement, camera angle, or composition'
+
+// No-person continuity: keeps place/light/grade coherent WITHOUT any facial/wardrobe/body
+// identity language — that clause is what dragged a person into object-only frames. Also
+// claims no prior reference.
+const ENVIRONMENT_CONTINUITY =
+  'keep the location, architecture, fixtures, props, lighting direction, color grade, and time of day internally consistent, never their composition or camera angle'
+
+// Positive garment/object disambiguation for object inserts: makes "no wearer" unmistakable
+// from the composition itself, not via a negative prompt. The physics tail is what stops the
+// garment from being rendered flat, symmetrical, and displayed like a product.
+const OBJECT_ONLY_CLAUSE =
+  'This is an object-detail insert shot: the subject is the object itself. No person is present in the frame — nothing shown is being worn, held, or carried by anyone; any garment or item is empty and unworn, and it rests exactly as real unsupported material would under gravity: crumpled, asymmetric, and irregular, never arranged, folded flat, pressed against the glass, or displayed like a product'
+
+const ENVIRONMENT_ONLY_CLAUSE = 'This is an empty-location shot: no people are present anywhere in the frame'
+
+// Whether a focus puts one or more people in the frame.
+export function focusShowsCharacters(focus: VisualFocus): boolean {
+  return focus === 'character' || focus === 'multiple_characters' || focus === 'mixed'
+}
+
+// The effective focus for a moment: an explicit classification wins; otherwise it is derived
+// from how many cast members are assigned to the frame. A moment with no cast and no explicit
+// focus is treated as an empty environment — never a person.
+export function visualFocusForMoment(explicit: VisualFocus | null | undefined, castCount: number): VisualFocus {
+  if (explicit) return explicit
+  if (castCount > 1) return 'multiple_characters'
+  if (castCount === 1) return 'character'
+  return 'environment'
+}
+
+// ---- Blocking phrase maps: enum → natural-language composition cue ----
+const VISIBILITY_PHRASES: Record<VisibilityMode, string> = {
+  full: 'fully visible',
+  partial: 'only partially in frame',
+  back_only: 'seen from behind, only their back visible',
+  shoulder_only: 'seen from behind, only one shoulder and the back of their head in frame',
+  hands_only: 'only their hands visible',
+  silhouette: 'shown only as a silhouette',
+  offscreen: 'just outside the frame, present but not visible',
+}
+const DEPTH_PHRASES: Record<DepthPlane, string> = {
+  extreme_foreground: 'in the extreme foreground',
+  foreground: 'in the foreground',
+  midground: 'in the midground',
+  background: 'in the background',
+}
+const SCREEN_PHRASES: Record<ScreenRegion, string> = {
+  far_left: 'at the far left of the frame',
+  left: 'on the left of the frame',
+  center: 'at the centre of the frame',
+  right: 'on the right of the frame',
+  far_right: 'at the far right of the frame',
+}
+const ORIENTATION_PHRASES: Record<BodyOrientation, string> = {
+  toward_camera: 'facing the camera',
+  three_quarter_left: 'turned three-quarters to the left',
+  three_quarter_right: 'turned three-quarters to the right',
+  profile_left: 'in left profile',
+  profile_right: 'in right profile',
+  back_to_camera: 'with their back to the camera',
+  toward_object: 'turned toward the object of focus',
+  away_from_other_character: 'turned away from the other character',
+}
+const ACTION_PHASE_PHRASES: Record<ActionPhase, string> = {
+  pre_action: 'frozen in the instant just before the action begins',
+  action_ready: 'poised at the ready, about to act',
+  mid_action: 'caught mid-action, the movement in progress',
+  post_action: 'in the still moment just after the action completes',
+}
+
+function cap(s: string): string {
+  return s ? s.charAt(0).toUpperCase() + s.slice(1) : s
+}
+
+// ---- Continuity-lock helpers ----
+// Footwear terms — invisible (and so must not be *required*) in any framing tighter than a
+// full wide shot. Behavioral/personality prose — stripped from the visual reference block.
+// Anything below the waist / floor-contact that a waist-up-or-tighter frame cannot show, so
+// it must never be *required*: footwear, feet, floor, threshold, standing surface.
+const BELOW_FRAME =
+  /\b(shoes?|sneakers?|boots?|heels?|sandals?|footwear|loafers?|slippers?|bare feet|feet|foot placement|threshold|doorway sill|visible floor|floor beneath|tile floor|ground beneath|standing on|stepping (?:in|over|onto))\b/i
+const BEHAVIORAL =
+  /\b(moves?|moving|speaks?|spoke|speaking|defensive(?:ly)?|quiet(?:ly)?|gentle(?:ly)?|methodical(?:ly)?|observant|calm(?:ly)?|nervous(?:ly)?|anxious(?:ly)?|confident(?:ly)?|shy|timid|manner|personality|tends? to|behaves?|acts?|when (?:she|he|they)\b)/i
+
+// Feet/floor are only in frame on a full wide shot; everything tighter is waist-up or closer.
+function feetVisible(shotType: ShotType): boolean {
+  return shotType === 'wide'
+}
+
+// Drop comma-clauses that require something below the frame (footwear, feet, floor,
+// threshold) when the shot can't show it. Applied to every free-text field, not just wardrobe.
+function sanitizeForVisibility(text: string, shotType: ShotType): string {
+  if (feetVisible(shotType) || !text) return text
+  const kept = text
+    .split(',')
+    .map((c) => c.trim())
+    .filter((c) => c && !BELOW_FRAME.test(c))
+    .join(', ')
+  return kept
+}
+
+// Parse the inspector's comma-separated Avoid draft into a normalized token list. This is the
+// ONLY place Avoid text is normalized — done on blur/save, never on every keystroke, so the
+// raw draft (including trailing spaces and multi-word phrases) is preserved while typing.
+export function parseAvoid(raw: string): string[] {
+  return raw
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
+}
+
+// A fabric/garment object — the class that renders as "worn" or "displayed flat".
+const FABRIC =
+  /\b(dress|shirt|garment|fabric|cloth(?:es|ing)?|uniform|sock|jacket|coat|gown|skirt|trousers|pants|sleeve|textile|linen|towel|sweater|scarf|blouse|robe|apron|denim|wool|cotton|laundry)\b/i
+
+// Positive collapsed-material description for an unsupported fabric insert. Minimal negation —
+// naming "neckline"/"sleeve" tends to summon them — just the buried, shapeless reality.
+const COLLAPSED_FABRIC_CLAUSE =
+  'the fabric is collapsed into itself, a loose crumpled tangle mostly buried under the other items and heavily occluded, with no wearer and no intact worn shape'
+
+function hasFabricPhysics(b: MomentBlocking | null | undefined): boolean {
+  return (b?.objectPhysics ?? []).some((o) => FABRIC.test(o.item ?? '') || o.symmetry === 'avoid')
+}
+
+// No hand/hold language when no person is in the frame (object/environment focus): an item
+// can't be "held" if nobody is there to hold it.
+function stripHoldLanguage(text: string): string {
+  return text
+    .split(',')
+    .map((c) => c.trim())
+    .filter((c) => c && !/\b(held|holding|hand|hands|grip|grasp|grasped|clutch(?:ed|ing)?|carried|carrying)\b/i.test(c))
+    .join(', ')
+}
+
+// A front-loader is either open OR closed-behind-glass, never both. When items are shown
+// inside, keep the closed "behind the glass" reading and drop any open-door clause.
+function resolveDoorGlass(text: string): string {
+  const behindGlass = /behind (?:the )?(?:circular )?glass|through (?:the )?glass/i.test(text)
+  const openDoor = /\bopen (?:door|lid|hatch)\b|\bdoor (?:is )?open\b|\bhatch (?:is )?open\b/i.test(text)
+  if (!(behindGlass && openDoor)) return text
+  return text
+    .split(/,|;/)
+    .map((c) => c.trim())
+    .filter((c) => c && !/\bopen (?:door|lid|hatch)\b|\bdoor (?:is )?open\b|\bhatch (?:is )?open\b/i.test(c))
+    .join(', ')
+}
+
+// The trailing full reference, made appearance-only: per character, drop behavioral clauses
+// and (when feet aren't visible) footwear clauses, keeping the visual descriptors.
+function sanitizeAppearance(appearance: string, shotType: ShotType): string {
+  return appearance
+    .split(';')
+    .map((seg) => {
+      const dash = seg.indexOf('—')
+      const head = dash >= 0 ? seg.slice(0, dash).trim() : ''
+      const body = dash >= 0 ? seg.slice(dash + 1) : seg
+      const kept = body
+        .split(/,|\.\s/)
+        .map((c) => c.trim())
+        .filter((c) => c && !BEHAVIORAL.test(c) && (feetVisible(shotType) || !BELOW_FRAME.test(c)))
+        .join(', ')
+      return head ? `${head} — ${kept}` : kept
+    })
+    .filter((s) => s.replace(/—/g, '').trim())
+    .join('; ')
+}
+
+// The compact visible identity anchors for one subject, filtered by what the shot and the
+// subject's visibility can physically show (skin tone / hairstyle / dominant wardrobe).
+function visibleAnchors(s: SubjectBlocking, shotType: ShotType): string[] {
+  const v = s.visibility
+  if (v === 'silhouette' || v === 'offscreen' || v === 'hands_only') return [] // nothing identifiable
+  const anchors: string[] = []
+  const skin = s.skin?.trim()
+  const hair = s.hair?.trim()
+  const wardrobe = s.wardrobe?.trim()
+  // Skin tone reads even from behind (neck, arms); hair reads from any angle but a silhouette.
+  if (skin) anchors.push(skin)
+  if (hair) anchors.push(hair)
+  // Wardrobe: torso is visible unless purely back-of-head; strip anything below the frame.
+  if (wardrobe) {
+    const w = sanitizeForVisibility(wardrobe, shotType)
+    if (w) anchors.push(w)
+  }
+  return anchors
+}
+
+// SETTING LOCK — pins the venue, its own practical light, and up to three visible fixtures,
+// emitted right after the camera/style header so the location is fixed before any action.
+function settingLockLine(b: MomentBlocking, shotType: ShotType): string | null {
+  const cat = b.settingCategory?.trim()
+  const light = b.practicalLighting?.trim()
+  // Setting anchors are also visibility-filtered: a waist-up shot must not require a visible
+  // floor/threshold even when the location has one.
+  const anchors = (b.environmentAnchors ?? [])
+    .map((a) => sanitizeForVisibility(a.trim(), shotType))
+    .filter(Boolean)
+    .slice(0, 3)
+  if (!cat && !light && anchors.length === 0) return null
+  const parts: string[] = []
+  if (cat) parts.push(cat)
+  if (anchors.length) parts.push(`clearly showing ${anchors.join(', ')}`)
+  if (light) parts.push(`lit by ${light}`)
+  return `SETTING LOCK — ${parts.join(', ')}`
+}
+
+// One subject's blocking → a placement/visibility sentence. The visible identity anchors are
+// inlined right after the name (before any pose/orientation detail) so the continuity lock
+// leads. Respects visibility so an over-the-shoulder foreground figure reads as partial.
+function subjectBlockingLine(s: SubjectBlocking, shotType: ShotType): string {
+  const name = s.name?.trim() || 'the figure'
+  const anchors = visibleAnchors(s, shotType)
+  const who = anchors.length ? `${name} (${anchors.join(', ')})` : name
+  const parts = [
+    `${DEPTH_PHRASES[s.depth]} ${SCREEN_PHRASES[s.screenRegion]}`,
+    `${who} is ${VISIBILITY_PHRASES[s.visibility]}`,
+    s.bodyOrientation ? ORIENTATION_PHRASES[s.bodyOrientation] : null,
+    s.gazeTarget?.trim() ? `looking toward ${s.gazeTarget.trim()}` : null,
+    s.pose?.trim() || null,
+    s.occludedBy?.trim() ? `partially occluded by ${s.occludedBy.trim()}` : null,
+  ].filter((p): p is string => !!p)
+  return cap(parts.join(', '))
+}
+
+// Deterministic contradiction cleanup (req 6). Runs before composing so the prompt never
+// contains impossible pairings: "fully visible" in a waist-up frame, a foreground-centre
+// subject when centring is being avoided, or an "accepting" focal action when a subject's
+// pose says the exchange hasn't happened yet.
+function sanitizeBlocking(b: MomentBlocking, shotType: ShotType): MomentBlocking {
+  const tight = shotType === 'medium' || shotType === 'close-up' // waist-up or closer
+  const avoidCentered = (b.avoid ?? []).some((a) => /cent(?:er|re|red|ered)|symmetr/i.test(a))
+
+  const subjects = (b.subjects ?? []).map((s) => {
+    let visibility = s.visibility
+    let screenRegion = s.screenRegion
+    if (visibility === 'full' && tight) visibility = 'partial' // full can't fit a waist-up frame
+    if (avoidCentered && (s.depth === 'foreground' || s.depth === 'extreme_foreground') && screenRegion === 'center') {
+      screenRegion = 'left' // foreground-centre contradicts an avoid-centred cue
+    }
+    return { ...s, visibility, screenRegion }
+  })
+
+  let focalAction = b.focalAction
+  if (focalAction && /\b(accepts?|accepting|takes?|taking|receives?|receiving)\b/i.test(focalAction)) {
+    const notYet =
+      b.actionPhase === 'pre_action' ||
+      b.actionPhase === 'action_ready' ||
+      (b.subjects ?? []).some((s) => /\blap\b|not yet|has not|about to|reaching|extend/i.test(s.pose ?? '')) ||
+      (b.subjects ?? []).some((s) => /extend|reaching|holding out|offer/i.test(s.pose ?? ''))
+    if (notYet) {
+      focalAction = focalAction.replace(
+        /\b(accepts?|accepting|takes?|taking|receives?|receiving)\b/gi,
+        'is not yet accepting (the exchange has not happened)'
+      )
+    }
+  }
+  return { ...b, subjects, focalAction }
+}
+
+// One object's physics → a plausibility sentence (gravity, deformation, containment,
+// occlusion, asymmetry). The antidote to the flat, displayed-garment failure.
+function objectPhysicsLine(o: ObjectPhysics): string {
+  const parts = [
+    o.item.trim(),
+    o.containment?.trim() || null,
+    o.gravityState?.trim() || null,
+    o.deformation?.trim() || null,
+    o.occlusion?.trim() || null,
+    o.symmetry === 'avoid'
+      ? 'asymmetric and irregular, not arranged or displayed'
+      : o.symmetry === 'intentional'
+        ? 'deliberately symmetrical'
+        : null,
+  ].filter((p): p is string => !!p)
+  return cap(parts.join(', '))
+}
+
+// An explicit "who must be in the frame" directive, derived from the moment's assigned cast
+// NAMES. Now shot-grammar-aware: an over-the-shoulder frame must NOT demand every character
+// be "clearly visible" (that forced a flat symmetrical two-shot) — the nearest figure is
+// explicitly partial. Used when a moment has no structured subject blocking.
+function presenceDirective(characterNames: string[], shotType: ShotType): string | null {
+  const names = characterNames.map((n) => n.trim()).filter(Boolean)
+  if (names.length === 0) return null
+  if (shotType === 'over-the-shoulder') {
+    if (names.length === 1) {
+      return `${names[0]} is the subject, framed over the shoulder of a partially visible foreground figure whose back and shoulder occupy the near frame`
+    }
+    return `Compose over the shoulder of ${names[0]}, who is nearest camera and seen from behind — only their shoulder and the back of their head are visible, not their face — with ${names
+      .slice(1)
+      .join(', ')} beyond them; do not stage this as a flat, symmetrical, face-to-face two-shot`
+  }
+  if (names.length === 1) return `${names[0]} is clearly visible as the primary subject of the frame`
+  return `All of these characters are present in the frame — do not omit any of them: ${names.join(', ')}`
+}
+
+// Prioritized composition (see the app's PROMPT-COMPOSITION requirements), joined into one
+// FLUX prompt: style anchor → shot framing → the frozen opening instant (which carries the
+// scene's subject-object spatial relationships from the breakdown) → explicit required-cast
+// presence → cast appearance for identity-lock → the specific setting → continuity → the
+// fixed 9:16 format constraints.
+//
+// `composition` should be the moment's startFrame (frozen opening instant) — passing the
+// full action-arc description makes the model render the completed action (the reversed-
+// motion bug). `characterDescription` is the composed cast appearance (may be empty →
+// omitted). `characterNames` are the assigned cast names for the presence directive
+// (optional; omitted → no presence line, e.g. legacy callers). `settingDescription` is the
+// assigned Setting's description (location continuity); omitted when absent.
 export function buildImagePrompt(
   stylePreset: StylePreset,
   characterDescription: string,
   shotType: ShotType,
   composition: string,
-  settingDescription?: string | null
+  settingDescription?: string | null,
+  characterNames: string[] = [],
+  visualFocus?: VisualFocus | null,
+  blocking?: MomentBlocking | null,
+  // A REAL supplied reference image (only when the endpoint conditions on one). When null,
+  // no reference-language is written — the prompt never claims a reference that isn't sent.
+  referenceImage?: { url: string; conditions: 'identity' | 'composition' } | null
 ): string {
+  const names = characterNames.map((n) => n.trim()).filter(Boolean)
+  const focus = visualFocusForMoment(visualFocus, names.length)
+  const showsCharacters = focusShowsCharacters(focus)
+  // Contradiction cleanup runs first so downstream lines can't emit impossible pairings.
+  const clean = blocking ? sanitizeBlocking(blocking, shotType) : null
+
+  // Location's own light overrides a generic "natural lighting" baked into the style prefix.
+  let style = STYLE_PREFIXES[stylePreset]
+  if (clean?.practicalLighting?.trim()) style = style.replace(/,?\s*natural lighting/gi, '')
+
+  const framing =
+    focus === 'object' ? OBJECT_SHOT_LABELS[shotType]
+    : focus === 'environment' ? ENVIRONMENT_SHOT_LABELS[shotType]
+    : SHOT_LABELS[shotType]
+
+  const settingLock = clean ? settingLockLine(clean, shotType) : null
+
+  // Free-text fields get the same shot-visibility sanitation as the identity anchors — a
+  // waist-up frame must not require footwear, feet, floor or a threshold anywhere. For a
+  // no-person frame, also drop "held/hand" language and resolve open-door vs behind-glass.
+  const noPerson = !showsCharacters
+  const cleanText = (text: string): string => {
+    let t = sanitizeForVisibility(text, shotType)
+    if (noPerson) t = resolveDoorGlass(stripHoldLanguage(t))
+    return t
+  }
+  const composed = cleanText(composition)
+  const focalAction = clean?.focalAction?.trim() ? cleanText(clean.focalAction.trim()) : null
+
+  // Structured subject blocking (when present) replaces the flat presence directive: it
+  // states each character's placement AND how much of them is visible, so it satisfies the
+  // "don't omit a selected character" requirement while respecting shot grammar. Fall back
+  // to the shot-grammar-aware presence directive when no subject blocking exists.
+  const subjectBlocking = (clean?.subjects ?? []).filter((s) => s && s.visibility)
+  const blockingLines = showsCharacters ? subjectBlocking.map((s) => subjectBlockingLine(s, shotType)) : []
+  const presence =
+    showsCharacters && blockingLines.length === 0 ? presenceDirective(names, shotType) : null
+
+  const physicsLines = (clean?.objectPhysics ?? [])
+    .filter((o) => o && o.item?.trim())
+    .map((o) => cleanText(objectPhysicsLine(o)))
+  // Collapsed-material clause for an unsupported fabric insert (object focus only) — the
+  // antidote to a garment rendering as a worn/displayed silhouette.
+  const collapsedFabric = focus === 'object' && hasFabricPhysics(clean) ? COLLAPSED_FABRIC_CLAUSE : null
+  const avoid = (clean?.avoid ?? []).map((a) => a.trim()).filter(Boolean)
+  // Trailing full reference, made appearance-only (no behavioral prose, no invisible footwear).
+  const reference = showsCharacters && appearanceAllowed(characterDescription) ? sanitizeAppearance(characterDescription.trim(), shotType) : ''
+
   return [
-    STYLE_PREFIXES[stylePreset],
-    characterDescription.trim() ? `Main character${characterDescription.includes(';') ? 's' : ''}: ${characterDescription}` : null,
-    settingDescription?.trim() ? `Setting: ${settingDescription.trim()}` : null,
-    SHOT_LABELS[shotType],
-    composition,
-    'maintain consistent character identity, facial features, hairstyle, wardrobe, color palette, lighting direction, and cinematic atmosphere from the previous image',
+    style,
+    framing,
+    // SETTING LOCK comes right after the camera/style header so the location is fixed first.
+    settingLock,
+    // Action-first: the focal action and phase lead so the composition is not dominated by
+    // the (longer) character identity prose that follows.
+    focalAction ? `Focal action: ${focalAction}` : null,
+    clean?.actionPhase ? cap(ACTION_PHASE_PHRASES[clean.actionPhase]) : null,
+    // Object/environment disambiguation goes BEFORE any character content so an object-only
+    // shot can't summon a wearer; character content follows only when a person is in frame.
+    focus === 'object' ? OBJECT_ONLY_CLAUSE : focus === 'environment' ? ENVIRONMENT_ONLY_CLAUSE : null,
+    collapsedFabric,
+    ...physicsLines,
+    // Subject blocking now leads with each subject's inline visible identity anchors.
+    ...blockingLines,
+    presence,
+    // The frozen opening instant (carries the breakdown's spatial relationships), sanitized.
+    composed,
+    settingDescription?.trim()
+      ? `The scene takes place in this specific location: ${settingDescription.trim()}. Render this exact environment, not a generic one`
+      : null,
+    // The complete reference trails — appearance only, no reference-image claim.
+    reference ? `Character identity reference (appearance only) — ${reference}` : null,
+    showsCharacters ? CHARACTER_CONTINUITY : ENVIRONMENT_CONTINUITY,
+    avoid.length > 0 ? `Avoid: ${avoid.join(', ')}` : null,
+    // Reference-image language is emitted ONLY when a real reference is actually supplied.
+    referenceImage
+      ? `A reference image is supplied; use it for ${referenceImage.conditions} continuity`
+      : null,
     'vertical 9:16 composition, portrait orientation, Instagram Reels format, no text or watermarks',
   ]
-    .filter((segment): segment is string => segment !== null)
+    .filter((segment): segment is string => segment !== null && segment !== '')
     .join('. ')
+}
+
+// True when the appearance block has any content left after sanitizing (avoids emitting an
+// empty "reference —" fragment).
+function appearanceAllowed(appearance: string): boolean {
+  return !!appearance.trim()
+}
+
+// The single source of truth for WHICH prompt is sent to the image model: an intentional
+// user override when one exists, otherwise a prompt freshly composed from the current
+// canonical state (cast/setting/startFrame). The stored provenance prompt
+// (moment.imagePrompt — the exact text last SENT) is deliberately NOT consulted here, so a
+// regeneration after a cast or location change always recomposes rather than reusing a
+// stale prompt. Both the render action and any preview must go through this one decision.
+export function resolveImagePrompt(args: {
+  override?: string | null
+  stylePreset: StylePreset
+  characterDescription: string
+  shotType: ShotType
+  composition: string
+  settingDescription?: string | null
+  characterNames?: string[]
+  visualFocus?: VisualFocus | null
+  blocking?: MomentBlocking | null
+  referenceImage?: { url: string; conditions: 'identity' | 'composition' } | null
+}): string {
+  const override = args.override?.trim()
+  if (override) return override
+  return buildImagePrompt(
+    args.stylePreset,
+    args.characterDescription,
+    args.shotType,
+    args.composition,
+    args.settingDescription,
+    args.characterNames ?? [],
+    args.visualFocus,
+    args.blocking,
+    args.referenceImage
+  )
 }
 
 // Advisory (not blocking) — a description this thin tends to produce inconsistent

@@ -22,6 +22,8 @@ export async function generateMoments(
         description: moment.description,
         durationSeconds: moment.durationSeconds,
         scriptSpan: moment.scriptSpan ?? null,
+        visualFocus: moment.visualFocus ?? null,
+        blocking: moment.blocking ?? null,
         characterNames: moment.characters ?? [],
         startFrame: moment.startFrame ?? null,
         motion: moment.motion ?? null,

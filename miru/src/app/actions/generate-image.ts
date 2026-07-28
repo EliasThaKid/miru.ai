@@ -1,44 +1,116 @@
 'use server'
 
+import { createHash, randomUUID } from 'node:crypto'
 import { generateImage } from '@/lib/fal'
-import { buildImagePrompt } from '@/lib/prompts'
+import { AssetError, fetchAndDecodeImage, type RenderStage } from '@/lib/image-validate'
+import { resolveImagePrompt } from '@/lib/prompts'
 import type { Moment, StylePreset } from '@/types'
 
 export type GenerateImageResult =
   | { ok: true; imageUrl: string; imagePrompt: string }
-  | { ok: false; error: string }
+  | { ok: false; error: string; stage: RenderStage }
+
+const DEV = process.env.NODE_ENV !== 'production'
+const MODEL = 'fal-ai/flux-pro/v1.1'
+
+// Secret-safe staged diagnostics (dev only). Never logs the prompt text, the image URL, or
+// any credential — only a prompt hash/length, the URL host, and sanitized shape metadata.
+function diag(fields: Record<string, unknown>): void {
+  if (DEV) console.log('[render]', JSON.stringify(fields))
+}
+function hostOf(url: string): string {
+  try {
+    return new URL(url).host
+  } catch {
+    return 'invalid-url'
+  }
+}
 
 export async function generateMomentImage(
   moment: Moment,
   stylePreset: StylePreset,
   characterDescription: string,
-  // Inspector-edited prompt: used verbatim when provided, bypassing buildImagePrompt.
+  // Intentional user override (moment.userPromptOverride). Used verbatim when present;
+  // otherwise the prompt is freshly composed from the current state. This is NOT the
+  // stored provenance prompt — passing that here is what previously froze regeneration.
   promptOverride?: string | null,
   // The assigned Setting's description (location continuity segment).
-  settingDescription?: string | null
+  settingDescription?: string | null,
+  // The assigned cast NAMES for the explicit required-presence directive.
+  characterNames: string[] = [],
+  // Optional batch grouping id for diagnostics (individual renders pass none).
+  batchId?: string
 ): Promise<GenerateImageResult> {
   // If an image already exists for this moment, return it instantly rather than re-calling the API.
   if (moment.imageUrl) {
     return { ok: true, imageUrl: moment.imageUrl, imagePrompt: moment.imagePrompt ?? '' }
   }
 
+  const attemptId = randomUUID().slice(0, 8)
+  let stage: RenderStage = 'compose'
   try {
+    // ---- compose ----
     // startFrame (frozen opening instant) drives the still; description is the legacy fallback.
-    const imagePrompt =
-      promptOverride?.trim() ||
-      buildImagePrompt(
-        stylePreset,
-        characterDescription,
-        moment.shotType,
-        moment.startFrame ?? moment.description,
-        settingDescription
-      )
+    const imagePrompt = resolveImagePrompt({
+      override: promptOverride,
+      stylePreset,
+      characterDescription,
+      shotType: moment.shotType,
+      composition: moment.startFrame ?? moment.description,
+      settingDescription,
+      characterNames,
+      visualFocus: moment.visualFocus,
+      blocking: moment.blocking,
+    })
+    diag({
+      stage: 'compose',
+      attemptId,
+      batchId,
+      momentId: moment.id,
+      model: MODEL,
+      promptLen: imagePrompt.length,
+      promptHash: createHash('sha256').update(imagePrompt).digest('hex').slice(0, 10),
+      payloadKeys: ['prompt', 'image_size', 'num_images'], // referenceImage is never sent to fal
+    })
+
+    // ---- submit + provider ----
+    stage = 'provider'
+    const t0 = Date.now()
     const imageUrl = await generateImage(imagePrompt)
+    diag({ stage: 'provider', attemptId, ms: Date.now() - t0, urlPresent: !!imageUrl, host: hostOf(imageUrl) })
+
+    // ---- asset-fetch + asset-decode (decode is the authority) ----
+    stage = 'asset-fetch'
+    const asset = await fetchAndDecodeImage(imageUrl)
+    diag({
+      stage: 'asset',
+      attemptId,
+      contentType: asset.contentType,
+      bytes: asset.bytes,
+      width: asset.width,
+      height: asset.height,
+      format: asset.format,
+      uniform: asset.uniform,
+    })
+    // A suspiciously uniform/near-black frame is KEPT (still a success) but flagged for review.
+    if (asset.uniform) {
+      diag({ stage: 'review', attemptId, momentId: moment.id, warning: 'suspiciously uniform/near-black frame — kept, flagged for manual review' })
+    }
+
+    // ---- persist (caller writes state) ----
     return { ok: true, imageUrl, imagePrompt }
   } catch (err) {
-    return {
-      ok: false,
-      error: err instanceof Error ? err.message : 'Image generation failed. Please try again.',
-    }
+    const failStage: RenderStage = err instanceof AssetError ? err.stage : stage
+    const message = err instanceof Error ? err.message : 'Image generation failed. Please try again.'
+    diag({
+      stage: 'failed',
+      attemptId,
+      batchId,
+      momentId: moment.id,
+      failStage,
+      error: err instanceof Error ? `${err.name}: ${message}` : String(err),
+    })
+    // Retain a useful reason in the UI; in dev, prefix the exact failing stage.
+    return { ok: false, error: DEV ? `[${failStage}] ${message}` : message, stage: failStage }
   }
 }

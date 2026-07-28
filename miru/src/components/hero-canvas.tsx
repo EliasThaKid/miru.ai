@@ -10,9 +10,12 @@ interface HeroCanvasProps {
   getTransition: (fromId: string, toId: string) => Transition | null
   slotStatus: (moment: Moment) => SlotStatus
   onRetry: (moment: Moment) => void
+  // Per-moment failure reason (includes the failing stage in dev) — shown instead of a bare
+  // "Render failed" so a real regression is diagnosable from the canvas.
+  errorFor?: (momentId: string) => string | undefined
 }
 
-export function HeroCanvas({ selection, moments, getTransition, slotStatus, onRetry }: HeroCanvasProps) {
+export function HeroCanvas({ selection, moments, getTransition, slotStatus, onRetry, errorFor }: HeroCanvasProps) {
   const frame = 'relative mx-auto aspect-9/16 h-full max-h-[68svh] overflow-hidden rounded-2xl bg-[#141414]'
 
   if (selection.kind === 'joint') {
@@ -55,8 +58,8 @@ export function HeroCanvas({ selection, moments, getTransition, slotStatus, onRe
       ) : status === 'done' && moment.imageUrl ? (
         <img src={moment.imageUrl} alt={moment.description} className="absolute inset-0 h-full w-full object-cover" />
       ) : status === 'error' ? (
-        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
-          <p className="text-[12px] text-destructive">Render failed</p>
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-6 text-center">
+          <p className="text-[12px] text-destructive">{errorFor?.(moment.id) || 'Render failed'}</p>
           <button
             type="button"
             onClick={() => onRetry(moment)}

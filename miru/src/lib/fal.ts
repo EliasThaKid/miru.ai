@@ -16,9 +16,24 @@ export async function generateImage(prompt: string): Promise<string> {
     logs: false,
   })
 
-  const url = result.data?.images?.[0]?.url
+  const data = result.data as { images?: { url?: string }[] } | undefined
+  const url = data?.images?.[0]?.url
+
+  // Secret-safe provider-shape diagnostic (dev only): request id + response shape, no URL/key.
+  if (process.env.NODE_ENV !== 'production') {
+    console.log(
+      '[render] fal',
+      JSON.stringify({
+        requestId: (result as { requestId?: string }).requestId,
+        dataKeys: Object.keys(data ?? {}),
+        images: Array.isArray(data?.images) ? data.images.length : 0,
+        urlPresent: !!url,
+      })
+    )
+  }
+
   if (!url) {
-    throw new Error('Image generation failed — no image was returned. Please try again.')
+    throw new Error('fal returned no image URL in the response. Please try again.')
   }
 
   return url
