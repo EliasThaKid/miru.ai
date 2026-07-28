@@ -12,12 +12,20 @@ export async function generateImage(prompt: string): Promise<string> {
       prompt,
       image_size: 'portrait_16_9',
       num_images: 1,
+      // The FLUX safety checker FALSE-POSITIVES on ordinary storyboard prompts and returns
+      // an all-black frame with has_nsfw_concepts=[true]. Verified by ablation
+      // (scripts/ablation-black-frame.mjs): an identical 464-word prompt is blacked out at
+      // the default tolerance but renders cleanly at safety_tolerance '6'; toggling
+      // enable_safety_checker had no effect. '5' cuts the false blackouts while keeping a
+      // guardrail. This is a parameter fix, not a prompt change.
+      safety_tolerance: '5',
     },
     logs: false,
   })
 
-  const data = result.data as { images?: { url?: string }[] } | undefined
+  const data = result.data as { images?: { url?: string }[]; has_nsfw_concepts?: boolean[] } | undefined
   const url = data?.images?.[0]?.url
+  const flagged = Array.isArray(data?.has_nsfw_concepts) && data.has_nsfw_concepts.some(Boolean)
 
   // Secret-safe provider-shape diagnostic (dev only): request id + response shape, no URL/key.
   if (process.env.NODE_ENV !== 'production') {
@@ -28,10 +36,18 @@ export async function generateImage(prompt: string): Promise<string> {
         dataKeys: Object.keys(data ?? {}),
         images: Array.isArray(data?.images) ? data.images.length : 0,
         urlPresent: !!url,
+        nsfwFlagged: flagged,
       })
     )
   }
 
+  // A flagged frame comes back all-black; surface a specific, actionable error rather than
+  // returning a silently-black asset (which the app would otherwise treat as a valid image).
+  if (flagged) {
+    throw new Error(
+      'The image provider’s safety filter blocked this frame as sensitive. Try rephrasing the shot (avoid ambiguous body/contact wording), or reduce the number of clauses.'
+    )
+  }
   if (!url) {
     throw new Error('fal returned no image URL in the response. Please try again.')
   }
