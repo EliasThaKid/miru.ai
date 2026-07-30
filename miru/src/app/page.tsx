@@ -1032,8 +1032,12 @@ export default function Home() {
                 key="review"
                 initial={{ opacity: reduceMotion ? 0 : 1 }}
                 animate={{ opacity: 1 }}
-                className="flex h-svh min-w-0 flex-col gap-4 px-8 py-6"
+                className="flex h-svh min-w-0 overflow-hidden"
               >
+                {/* Center workspace — only the width left after the left rail and the
+                    inspector. min-w-0 is what lets the thumbnail rail scroll horizontally
+                    inside this column instead of overflowing under the inspector. */}
+                <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-hidden px-8 py-6">
                 <div className="flex items-center gap-3">
                   <p className="text-[11px] tracking-[0.18em] text-[var(--text-tertiary)]">STORYBOARD</p>
                   {queueRunning ? (
@@ -1086,7 +1090,17 @@ export default function Home() {
                       ≈ ${(animatableCount * ESTIMATED_COST_PER_VIDEO_USD).toFixed(2)}
                     </button>
                   ) : animatedCount > 0 ? (
-                    <span className="text-[12px] text-[var(--text-tertiary)]">All {animatedCount} animated ✓</span>
+                    <>
+                      <span className="text-[12px] text-[var(--text-tertiary)]">All {animatedCount} animated ✓</span>
+                      {/* Every eligible moment has a clip — offer to play the whole sequence. */}
+                      <button
+                        type="button"
+                        onClick={() => setShowAnimatic(true)}
+                        className="text-[12px] text-foreground/80 transition-colors hover:text-foreground"
+                      >
+                        Watch sequence ▶
+                      </button>
+                    </>
                   ) : null}
                 </div>
 
@@ -1095,17 +1109,39 @@ export default function Home() {
                     <AnimaticPlayer key={project.updatedAt} project={project} onClose={() => setShowAnimatic(false)} />
                   </div>
                 ) : (
-                  <div className="flex min-h-0 flex-1 justify-center gap-8">
-                    <div className="min-h-0 flex-1">
-                      <HeroCanvas
-                        selection={selection}
-                        moments={project.moments}
-                        getTransition={getTransition}
-                        slotStatus={slotStatus}
-                        onRetry={handleRenderFrame}
-                        errorFor={(id) => imageErrors[id] || undefined}
-                      />
-                    </div>
+                  <div className="min-h-0 flex-1">
+                    <HeroCanvas
+                      selection={selection}
+                      moments={project.moments}
+                      getTransition={getTransition}
+                      slotStatus={slotStatus}
+                      onRetry={handleRenderFrame}
+                      errorFor={(id) => imageErrors[id] || undefined}
+                    />
+                  </div>
+                )}
+
+                  {/* Thumbnail rail — contained in the center column; ReviewStrip's own
+                      overflow-x-auto scrolls it when the shots don't fit. shrink-0 keeps its
+                      height so it never squeezes the stage. */}
+                  <div className="min-w-0 shrink-0">
+                    <ReviewStrip
+                      moments={project.moments}
+                      getTransition={getTransition}
+                      slotStatus={slotStatus}
+                      jointStatus={jointStatus}
+                      selection={selection}
+                      onSelect={setSelection}
+                      animate={!reduceMotion}
+                    />
+                  </div>
+                </div>
+
+                {/* Inspector — its own full-height column with independent vertical scroll,
+                    so a long Description/Motion/Prompt never clips the Generation section and
+                    never overlaps the thumbnail rail. Hidden while the animatic is playing. */}
+                {!showAnimatic ? (
+                  <div className="h-svh min-h-0 shrink-0 overflow-y-auto overflow-x-hidden border-l border-white/10 px-5 py-6">
                     <Inspector
                       selection={selection}
                       project={project}
@@ -1136,17 +1172,7 @@ export default function Home() {
                       }}
                     />
                   </div>
-                )}
-
-                <ReviewStrip
-                  moments={project.moments}
-                  getTransition={getTransition}
-                  slotStatus={slotStatus}
-                  jointStatus={jointStatus}
-                  selection={selection}
-                  onSelect={setSelection}
-                  animate={!reduceMotion}
-                />
+                ) : null}
               </motion.div>
             )}
           </AnimatePresence>

@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import { exportImagesZip, exportStoryboardPdf } from '@/lib/export'
+import { exportSequenceVideo } from '@/lib/export-video'
 import type { Project } from '@/types'
 
 interface LeftRailProps {
@@ -19,19 +20,24 @@ const ENTRY = 'flex w-full items-center gap-2 py-1.5 text-left text-[13px] text-
 const SECTION_LABEL = 'text-[11px] tracking-[0.18em] text-[var(--text-tertiary)]'
 
 export function LeftRail({ project, mode, hasFrames, onShowAnimatic, onEnterReview, onBackToCompose }: LeftRailProps) {
-  const [busy, setBusy] = useState<'pdf' | 'zip' | null>(null)
+  const [busy, setBusy] = useState<'pdf' | 'zip' | 'video' | null>(null)
+  const [videoPct, setVideoPct] = useState(0)
   const [error, setError] = useState<string | null>(null)
+  // Only offer the video export once at least one clip exists (otherwise it's just a slideshow).
+  const hasClips = project.moments.some((m) => m.videoUrl)
 
-  async function runExport(kind: 'pdf' | 'zip') {
+  async function runExport(kind: 'pdf' | 'zip' | 'video') {
     setBusy(kind)
     setError(null)
     try {
       if (kind === 'pdf') await exportStoryboardPdf(project)
-      else await exportImagesZip(project)
+      else if (kind === 'zip') await exportImagesZip(project)
+      else await exportSequenceVideo(project, (f) => setVideoPct(Math.round(f * 100)))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Export failed. Please try again.')
     }
     setBusy(null)
+    setVideoPct(0)
   }
 
   return (
@@ -87,6 +93,15 @@ export function LeftRail({ project, mode, hasFrames, onShowAnimatic, onEnterRevi
             </button>
             <button type="button" className={ENTRY} onClick={() => runExport('zip')} disabled={busy !== null || !hasFrames}>
               {busy === 'zip' ? 'Zipping…' : 'Images ZIP'}
+            </button>
+            <button
+              type="button"
+              className={ENTRY}
+              onClick={() => runExport('video')}
+              disabled={busy !== null || !hasClips}
+              title={hasClips ? 'Records the animatic as a WebM video (plays in real time)' : 'Animate at least one moment first'}
+            >
+              {busy === 'video' ? `Recording… ${videoPct}%` : 'Export Video (WebM)'}
             </button>
             {error ? <p className="text-[11px] text-destructive">{error}</p> : null}
           </motion.div>
