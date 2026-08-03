@@ -67,6 +67,33 @@ GLOBAL_DAILY_TOKEN_CEILING=5000                 # kill-switch: stop all paid gen
   `apply_purchase`, which no-ops on a replayed session id.
 - **Never trust a client token amount.** Costs come from server env, not the request body.
 
+## Auth activation (Phase 2 — do this to turn on sign-in)
+
+The code degrades gracefully: with **no** Supabase env vars set, the app is the original
+`$0` localStorage demo and shows no account UI. Sign-in turns on the moment these are set.
+
+1. **Add the two public vars to `.env.local`** (and later to Vercel). They are browser-safe:
+   ```bash
+   NEXT_PUBLIC_SUPABASE_URL=https://nysycmzhznthcgvyzfxg.supabase.co
+   NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...        # the anon/public key
+   ```
+2. **Email/password:** Supabase dashboard → Authentication → Providers → **Email = ON**.
+   For instant test signups, toggle **"Confirm email" OFF** (turn it back on before going
+   live). With it on, new users must click an emailed link before signing in.
+3. **GitHub OAuth:**
+   - GitHub → Settings → Developer settings → OAuth Apps → **New OAuth App**.
+     - Homepage URL: your app URL (e.g. `http://localhost:3000` for dev).
+     - **Authorization callback URL:**
+       `https://nysycmzhznthcgvyzfxg.supabase.co/auth/v1/callback`
+   - Copy the Client ID + generate a Client Secret.
+   - Supabase dashboard → Authentication → Providers → **GitHub = ON**, paste both.
+4. **Redirect URLs:** Supabase → Authentication → URL Configuration → add your Site URL
+   (`http://localhost:3000` in dev, your Vercel URL in prod) so the `/auth/callback` return
+   is allowed.
+
+That's it — restart `npm run dev`, and the left rail shows Sign in / your email + token
+balance. Projects for signed-in users now persist server-side (RLS-scoped to the user).
+
 ## Go-live checklist (do NOT flip to live Stripe keys until all true)
 
 - [ ] **Legal/tax:** a real entity or individual on Stripe with tax info; Stripe Tax configured.
@@ -81,7 +108,10 @@ GLOBAL_DAILY_TOKEN_CEILING=5000                 # kill-switch: stop all paid gen
 ## Phasing (tracked in the build)
 
 1. **Schema + token ledger** (this migration) + runbook. ✅
-2. Supabase auth (SSR) + move Project persistence to the DB (anon demo mode stays).
+2. **Supabase auth (SSR) + Project persistence in the DB** (anon demo mode stays). ✅
+   Sign-in at `/sign-in` (email/password + GitHub); session refresh via `src/proxy.ts`
+   (Next 16 renamed `middleware` → `proxy`); signed-in projects live in the `projects`
+   table, anonymous stays on localStorage. **To activate, see "Auth activation" below.**
 3. Metering wrapper on every generation (spend/refund) + caps + kill-switch.
 4. Persist fal outputs into Storage (stills/clips) so projects don't rot.
 5. Async Kling jobs (fal webhook/poll) for serverless reliability.

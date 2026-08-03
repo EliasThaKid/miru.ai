@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import { exportImagesZip, exportStoryboardPdf } from '@/lib/export'
 import { exportSequenceVideo } from '@/lib/export-video'
+import { AuthButton } from '@/components/auth-button'
 import type { Project } from '@/types'
 
 interface LeftRailProps {
@@ -43,6 +44,8 @@ export function LeftRail({ project, mode, hasFrames, onShowAnimatic, onEnterRevi
   return (
     <aside className="sticky top-0 hidden h-svh w-[248px] shrink-0 flex-col gap-8 border-r border-white/10 px-5 py-6 md:flex">
       <p className="text-[13px] font-medium tracking-[0.24em] text-foreground">SCENELAB</p>
+
+      <AuthButton />
 
       <div className="flex flex-col gap-2">
         <p className={SECTION_LABEL}>PROJECT</p>

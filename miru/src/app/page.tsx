@@ -21,7 +21,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/components/ui/textarea'
 import { extractLastFrame } from '@/lib/extract-frame'
 import { isDescriptionWeak, parseAvoid } from '@/lib/prompts'
-import { loadProject, saveProject } from '@/lib/storage'
+import { loadActiveProject, saveActiveProject, ANON_CONTEXT, type PersistContext } from '@/lib/project-store'
 import type { Character, ConnectionMode, Moment, Project, Setting, StylePreset, Transition, VisualFocus } from '@/types'
 
 // Extends the Server Action timeout for this page — Kling 1.6 (generateMomentVideo)
@@ -106,28 +106,45 @@ export default function Home() {
   const listingSeqRef = useRef(0)
   const cancelRendersRef = useRef(false)
   const cancelAnimateAllRef = useRef(false)
+  // Where the active project persists (DB row when signed in, else localStorage). Held in a
+  // ref so the debounced save always reads the latest context without re-subscribing.
+  const persistContextRef = useRef<PersistContext>(ANON_CONTEXT)
 
   useEffect(() => {
-    const existing = loadProject()
-    // settings arrived after storage v3 shipped — normalize older v3 saves.
-    if (existing && !Array.isArray(existing.settings)) existing.settings = []
-    setProject(
-      existing ?? {
-        ...EMPTY_PROJECT,
-        id: crypto.randomUUID(),
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
+    let active = true
+    loadActiveProject().then(({ project: existing, context }) => {
+      if (!active) return
+      persistContextRef.current = context
+      setProject(
+        existing ?? {
+          ...EMPTY_PROJECT,
+          id: crypto.randomUUID(),
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        }
+      )
+      if (existing && existing.moments.length > 0) {
+        setMode('reviewing')
+        setSelection({ kind: 'moment', id: existing.moments[0].id })
       }
-    )
-    if (existing && existing.moments.length > 0) {
-      setMode('reviewing')
-      setSelection({ kind: 'moment', id: existing.moments[0].id })
+      setHasLoaded(true)
+    })
+    return () => {
+      active = false
     }
-    setHasLoaded(true)
   }, [])
 
+  // Debounced persistence — a cloud save can't fire on every keystroke. localStorage saves
+  // are debounced too (harmless). The save updates the context ref when a first insert
+  // assigns a rowId, so subsequent saves update in place.
   useEffect(() => {
-    if (hasLoaded) saveProject(project)
+    if (!hasLoaded) return
+    const handle = setTimeout(() => {
+      saveActiveProject(project, persistContextRef.current).then((context) => {
+        persistContextRef.current = context
+      })
+    }, 600)
+    return () => clearTimeout(handle)
   }, [project, hasLoaded])
 
   // ---------- status derivations ----------
