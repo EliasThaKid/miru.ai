@@ -112,7 +112,18 @@ balance. Projects for signed-in users now persist server-side (RLS-scoped to the
    Sign-in at `/sign-in` (email/password + GitHub); session refresh via `src/proxy.ts`
    (Next 16 renamed `middleware` → `proxy`); signed-in projects live in the `projects`
    table, anonymous stays on localStorage. **To activate, see "Auth activation" below.**
-3. Metering wrapper on every generation (spend/refund) + caps + kill-switch.
+3. **Metering wrapper on every generation** (spend/refund) + caps + kill-switch. ✅
+   Every paid action reserves tokens before the fal call and refunds on failure; a cached
+   or invalid request is free. Signed-out users can't trigger generation once Supabase is
+   configured (the demo uses cached assets). Per-user daily cap + global daily ceiling are
+   enforced *atomically inside* `spend_tokens` (see `0002_metering.sql`) and passed by the
+   server from env — never by the client. **Run `supabase/migrations/0002_metering.sql`**
+   (SQL editor or `supabase db push`) before this takes effect. Costs/caps come from the
+   `TOKENS_PER_*`, `DAILY_TOKEN_CAP_PER_USER`, and `GLOBAL_DAILY_TOKEN_CEILING` env vars
+   (defaults apply if unset). To grant yourself test tokens, run this in the SQL editor
+   (no `auth.uid()` there, so match by email):
+   `update token_balances set tokens = 500 where user_id = (select id from auth.users where email = 'you@example.com');`
+   — or raise the welcome grant in `0001_init.sql`.
 4. Persist fal outputs into Storage (stills/clips) so projects don't rot.
 5. Async Kling jobs (fal webhook/poll) for serverless reliability.
 6. Stripe Checkout (test) + signature-verified webhook crediting.

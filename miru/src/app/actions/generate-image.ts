@@ -3,6 +3,7 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { generateImage } from '@/lib/fal'
 import { AssetError, fetchAndDecodeImage, type RenderStage } from '@/lib/image-validate'
+import { beginGeneration, tokenCost } from '@/lib/metering'
 import { resolveImagePrompt } from '@/lib/prompts'
 import type { Moment, StylePreset } from '@/types'
 
@@ -41,10 +42,15 @@ export async function generateMomentImage(
   // Optional batch grouping id for diagnostics (individual renders pass none).
   batchId?: string
 ): Promise<GenerateImageResult> {
-  // If an image already exists for this moment, return it instantly rather than re-calling the API.
+  // If an image already exists for this moment, return it instantly rather than re-calling
+  // the API — a cached hit is free (no tokens spent).
   if (moment.imageUrl) {
     return { ok: true, imageUrl: moment.imageUrl, imagePrompt: moment.imagePrompt ?? '' }
   }
+
+  // Reserve tokens before any paid work; refund on failure below.
+  const meter = await beginGeneration(tokenCost.still(), 'spend:still', moment.id)
+  if (!meter.ok) return { ok: false, error: meter.error, stage: 'compose' }
 
   const attemptId = randomUUID().slice(0, 8)
   let stage: RenderStage = 'compose'
@@ -100,6 +106,8 @@ export async function generateMomentImage(
     // ---- persist (caller writes state) ----
     return { ok: true, imageUrl, imagePrompt }
   } catch (err) {
+    // No usable image was produced — refund the reserved tokens.
+    await meter.refund()
     const failStage: RenderStage = err instanceof AssetError ? err.stage : stage
     const message = err instanceof Error ? err.message : 'Image generation failed. Please try again.'
     diag({

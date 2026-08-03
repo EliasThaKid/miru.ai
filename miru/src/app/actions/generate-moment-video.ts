@@ -1,6 +1,7 @@
 'use server'
 
 import { animateMoment } from '@/lib/fal'
+import { beginGeneration, tokenCost } from '@/lib/metering'
 import { buildVideoPrompt } from '@/lib/prompts'
 import type { Moment } from '@/types'
 
@@ -15,10 +16,14 @@ export type GenerateVideoResult =
   | { ok: false; error: string }
 
 export async function generateMomentVideo(moment: Moment): Promise<GenerateVideoResult> {
-  // If a video already exists for this moment, return it instantly rather than re-calling the API.
+  // If a video already exists for this moment, return it instantly rather than re-calling
+  // the API — a cached hit is free (no tokens spent).
   if (moment.videoUrl) {
     return { ok: true, videoUrl: moment.videoUrl, videoPrompt: moment.videoPrompt ?? '' }
   }
+
+  const meter = await beginGeneration(tokenCost.clip(), 'spend:clip', moment.id)
+  if (!meter.ok) return { ok: false, error: meter.error }
 
   try {
     // Long moments (8-10s) get 10-second clips; everything else the validated 5s.
@@ -29,6 +34,7 @@ export async function generateMomentVideo(moment: Moment): Promise<GenerateVideo
     const videoUrl = await animateMoment(moment.imageUrl ?? '', videoPrompt, clipSeconds === 10 ? '10' : '5')
     return { ok: true, videoUrl, videoPrompt }
   } catch (err) {
+    await meter.refund()
     return {
       ok: false,
       error: err instanceof Error ? err.message : 'Video generation failed. Please try again.',

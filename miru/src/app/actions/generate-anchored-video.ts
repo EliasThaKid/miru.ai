@@ -1,6 +1,7 @@
 'use server'
 
 import { generateBridge, generateImage } from '@/lib/fal'
+import { beginGeneration, tokenCost } from '@/lib/metering'
 import { buildImagePrompt, buildVideoPrompt } from '@/lib/prompts'
 import type { Moment, StylePreset } from '@/types'
 
@@ -26,6 +27,12 @@ export async function generateAnchoredMomentVideo(
     return { ok: false, error: 'Anchored animation supports 5-second clips only (Kling O3 is not validated at 10s).' }
   }
 
+  // Cost = one O3 clip, plus one still only when we must render a fresh end pose (a reused
+  // endImageUrl is already paid for).
+  const amount = tokenCost.clip() + (moment.endImageUrl ? 0 : tokenCost.still())
+  const meter = await beginGeneration(amount, 'spend:anchored', moment.id)
+  if (!meter.ok) return { ok: false, error: meter.error }
+
   try {
     // Reuse a previously paid end still; otherwise render the closing pose.
     let endImageUrl = moment.endImageUrl ?? null
@@ -48,6 +55,7 @@ export async function generateAnchoredMomentVideo(
     const videoUrl = await generateBridge(moment.imageUrl, endImageUrl, videoPrompt)
     return { ok: true, videoUrl, videoPrompt, endImageUrl }
   } catch (err) {
+    await meter.refund()
     return {
       ok: false,
       error: err instanceof Error ? err.message : 'Anchored animation failed. Please try again.',

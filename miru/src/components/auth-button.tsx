@@ -18,6 +18,7 @@ export function AuthButton() {
     if (!isSupabaseConfigured()) return
     const supabase = createClient()
     let active = true
+    let channel: ReturnType<typeof supabase.channel> | null = null
 
     async function loadBalance(userId: string) {
       const { data } = await supabase
@@ -28,11 +29,30 @@ export function AuthButton() {
       if (active) setTokens(data?.tokens ?? 0)
     }
 
+    // Live balance: subscribe to this user's token_balances row so the count ticks down as
+    // generations spend (RLS ensures only their own row is received).
+    function subscribe(userId: string) {
+      channel = supabase
+        .channel(`token-balance:${userId}`)
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'token_balances', filter: `user_id=eq.${userId}` },
+          (payload) => {
+            const next = (payload.new as { tokens?: number } | null)?.tokens
+            if (active && typeof next === 'number') setTokens(next)
+          }
+        )
+        .subscribe()
+    }
+
     supabase.auth.getUser().then(({ data }) => {
       if (!active) return
       setEmail(data.user?.email ?? null)
       setReady(true)
-      if (data.user) loadBalance(data.user.id)
+      if (data.user) {
+        loadBalance(data.user.id)
+        subscribe(data.user.id)
+      }
     })
 
     const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -45,6 +65,7 @@ export function AuthButton() {
 
     return () => {
       active = false
+      if (channel) supabase.removeChannel(channel)
       sub.subscription.unsubscribe()
     }
   }, [])

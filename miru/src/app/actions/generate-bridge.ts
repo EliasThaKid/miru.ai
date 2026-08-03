@@ -1,6 +1,7 @@
 'use server'
 
 import { generateBridge, uploadFrame } from '@/lib/fal'
+import { beginGeneration, tokenCost } from '@/lib/metering'
 import { buildTransitionPrompt } from '@/lib/prompts'
 import type { Moment, Transition } from '@/types'
 
@@ -29,12 +30,16 @@ export async function generateBridgeVideo(
     return { ok: false, error: 'Both moments need images before a bridge can be generated.' }
   }
 
+  const meter = await beginGeneration(tokenCost.bridge(), 'spend:bridge', `${fromMoment.id}->${toMoment.id}`)
+  if (!meter.ok) return { ok: false, error: meter.error }
+
   try {
     const startImageUrl = startFrameDataUrl ? await uploadFrame(startFrameDataUrl) : fromMoment.imageUrl
     const transitionPrompt = buildTransitionPrompt(fromMoment.description, toMoment.description, bridgeDirection)
     const videoUrl = await generateBridge(startImageUrl, toMoment.imageUrl, transitionPrompt)
     return { ok: true, videoUrl, transitionPrompt }
   } catch (err) {
+    await meter.refund()
     return {
       ok: false,
       error: err instanceof Error ? err.message : 'Bridge generation failed. Please try again.',
