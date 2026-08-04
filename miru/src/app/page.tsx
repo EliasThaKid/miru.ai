@@ -7,6 +7,14 @@ import { generateMomentImage } from '@/app/actions/generate-image'
 import { generateMomentVideo } from '@/app/actions/generate-moment-video'
 import { generateAnchoredMomentVideo } from '@/app/actions/generate-anchored-video'
 import { generateBridgeVideo } from '@/app/actions/generate-bridge'
+import {
+  listOpenJobs,
+  submitAnchoredVideoJob,
+  submitBridgeJob,
+  submitMomentVideoJob,
+  type RenderJobResult,
+  type SubmitJobResult,
+} from '@/app/actions/render-jobs'
 import { extractScriptContext } from '@/app/actions/extract-context'
 import { refineCharacterDescription, refineSettingDescription } from '@/app/actions/refine-character'
 import { AnimaticPlayer } from '@/components/animatic-player'
@@ -20,6 +28,7 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { extractLastFrame } from '@/lib/extract-frame'
+import { awaitRenderJob } from '@/lib/job-poller'
 import { isDescriptionWeak, parseAvoid } from '@/lib/prompts'
 import { loadActiveProject, saveActiveProject, ANON_CONTEXT, type PersistContext } from '@/lib/project-store'
 import { newId } from '@/lib/utils'
@@ -40,6 +49,10 @@ const STYLE_PRESETS: { value: StylePreset; label: string }[] = [
 const ESTIMATED_COST_PER_IMAGE_USD = 0.04
 // Ballpark Kling 1.6 cost per 5s clip — labeled "≈" in the UI.
 const ESTIMATED_COST_PER_VIDEO_USD = 0.4
+
+// How many clips may be in flight at once during a hosted Animate All. See runAnimateAll for
+// why this is small rather than "as many as fal will take".
+const ANIMATE_CONCURRENCY = 3
 
 const EMPTY_PROJECT: Project = {
   id: '',
@@ -81,6 +94,7 @@ export default function Home() {
 
   const [queueRunning, setQueueRunning] = useState(false)
   const [animatingAll, setAnimatingAll] = useState(false)
+  const [confirmAnimateAll, setConfirmAnimateAll] = useState(false)
   const [showAnimatic, setShowAnimatic] = useState(false)
 
   // Per-entity refine state (keyed by character/setting id) — one entity refining never
@@ -129,11 +143,119 @@ export default function Home() {
         setSelection({ kind: 'moment', id: existing.moments[0].id })
       }
       setHasLoaded(true)
+      // Reattach to anything still rendering. This is the payoff of persisting jobs: a
+      // reload (or a laptop closed mid-batch) resumes instead of losing paid clips.
+      if (context.userId) void resumeOpenJobs()
     })
     return () => {
       active = false
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // Re-drive the poller for every job left running by a previous session. Results land
+  // through the same handlers a live render uses, so there is one completion path.
+  async function resumeOpenJobs() {
+    const open = await listOpenJobs()
+    if (open.length === 0) return
+
+    for (const job of open) {
+      if (job.kind === 'bridge') {
+        const [fromId] = job.targetId.split('->')
+        setGeneratingBridgeIds((prev) => new Set(prev).add(fromId))
+      } else {
+        setGeneratingVideoIds((prev) => new Set(prev).add(job.targetId))
+      }
+
+      void awaitRenderJob(job.jobId).then((polled) => {
+        if (polled.ok && polled.status === 'done') {
+          applyJobResult(job.kind, job.targetId, polled.result)
+        } else if (!polled.ok) {
+          if (job.kind === 'bridge') {
+            const [fromId] = job.targetId.split('->')
+            setBridgeErrors((prev) => ({ ...prev, [fromId]: polled.error }))
+          } else {
+            setVideoErrors((prev) => ({ ...prev, [job.targetId]: polled.error }))
+          }
+        }
+        clearGeneratingFor(job.kind, job.targetId)
+      })
+    }
+  }
+
+  function clearGeneratingFor(kind: 'clip' | 'anchored' | 'bridge', targetId: string) {
+    if (kind === 'bridge') {
+      const [fromId] = targetId.split('->')
+      setGeneratingBridgeIds((prev) => {
+        const next = new Set(prev)
+        next.delete(fromId)
+        return next
+      })
+      return
+    }
+    setGeneratingVideoIds((prev) => {
+      const next = new Set(prev)
+      next.delete(targetId)
+      return next
+    })
+  }
+
+  // Write a resumed job's result into project state. Mirrors what the live handlers do.
+  function applyJobResult(
+    kind: 'clip' | 'anchored' | 'bridge',
+    targetId: string,
+    result: RenderJobResult
+  ) {
+    const now = new Date().toISOString()
+
+    if (kind === 'bridge') {
+      const [fromId, toId] = targetId.split('->')
+      setProject((prev) => {
+        const found = findTransition(prev.transitions, fromId, toId)
+        const updated: Transition = found
+          ? { ...found, mode: 'generated-bridge', videoUrl: result.videoUrl, videoStoragePath: result.videoStoragePath, transitionPrompt: result.videoPrompt, generatedAt: now }
+          : {
+              id: newId(),
+              fromMomentId: fromId,
+              toMomentId: toId,
+              mode: 'generated-bridge',
+              videoUrl: result.videoUrl,
+              videoStoragePath: result.videoStoragePath,
+              transitionPrompt: result.videoPrompt,
+              bridgeDirection: null,
+              generatedAt: now,
+            }
+        return {
+          ...prev,
+          transitions: found
+            ? prev.transitions.map((t) => (t.id === found.id ? updated : t))
+            : [...prev.transitions, updated],
+          updatedAt: now,
+        }
+      })
+      return
+    }
+
+    setProject((prev) => ({
+      ...prev,
+      moments: prev.moments.map((m) =>
+        m.id === targetId
+          ? {
+              ...m,
+              videoUrl: result.videoUrl,
+              videoStoragePath: result.videoStoragePath,
+              videoPrompt: result.videoPrompt,
+              videoGeneratedAt: now,
+              videoModel: kind === 'anchored' ? 'kling-o3-anchored' : 'kling-1.6',
+              ...(kind === 'anchored' && result.endImageUrl
+                ? { endImageUrl: result.endImageUrl, endImageStoragePath: result.endImageStoragePath ?? null }
+                : {}),
+            }
+          : m
+      ),
+      updatedAt: now,
+    }))
+  }
 
   // Debounced persistence — a cloud save can't fire on every keystroke. localStorage saves
   // are debounced too (harmless). The save updates the context ref when a first insert
@@ -321,11 +443,38 @@ export default function Home() {
 
   // ---------- animation (Kling 1.6) ----------
 
+  // Signed-in users render through fal's QUEUE: the job is persisted server-side, so closing
+  // the tab no longer destroys a paid clip. The anonymous $0 demo has no database to hold a
+  // job and keeps the original blocking path.
+  function isHosted(): boolean {
+    return persistContextRef.current.userId !== null
+  }
+
+  // Collapse a submit + poll into the same shape the direct actions return. A 'cached' submit
+  // never reached fal and cost nothing.
+  async function resolveJob(
+    submitted: SubmitJobResult
+  ): Promise<{ ok: true; result: RenderJobResult } | { ok: false; error: string }> {
+    if (!submitted.ok) return { ok: false, error: submitted.error }
+    if (submitted.status === 'cached') return { ok: true, result: submitted.result }
+
+    const polled = await awaitRenderJob(submitted.jobId)
+    if (!polled.ok) return { ok: false, error: polled.error }
+    if (polled.status !== 'done') {
+      return { ok: false, error: 'The render did not finish. Please try again.' }
+    }
+    return { ok: true, result: polled.result }
+  }
+
   async function handleAnimate(moment: Moment) {
     setGeneratingVideoIds((prev) => new Set(prev).add(moment.id))
     setVideoErrors((prev) => ({ ...prev, [moment.id]: '' }))
 
-    const result = await generateMomentVideo(moment)
+    const result = isHosted()
+      ? await resolveJob(await submitMomentVideoJob(moment, persistContextRef.current.rowId)).then((r) =>
+          r.ok ? ({ ok: true as const, ...r.result }) : r
+        )
+      : await generateMomentVideo(moment)
 
     if (result.ok) {
       setProject((prev) => ({
@@ -359,7 +508,16 @@ export default function Home() {
     await handleAnimate({ ...moment, videoUrl: null, videoStoragePath: null, videoPrompt: null })
   }
 
-  // ---------- Animate All (sequential batch) ----------
+  // ---------- Animate All (batched) ----------
+  //
+  // Hosted runs let up to ANIMATE_CONCURRENCY clips be in flight at once. That is not a
+  // relaxation of the "never parallel" rule: with the queue, submitting is a cheap HTTP call
+  // and fal's scheduler owns execution, so this is N rows in their queue rather than N
+  // renders hammering the endpoint. Stills stay strictly sequential (runRenderQueue).
+  //
+  // The window is small on purpose. Every submitted clip is billed the moment it starts, so
+  // a wide window means a user who cancels after seeing the first result has already paid for
+  // everything in flight. Three keeps the wall-clock win while capping that exposure.
   // Eligible = a moment that has a still but no clip yet. Completed clips are left intact;
   // a still regenerate clears its clip (handleRegenerateImage), which makes that moment
   // eligible again — so "stale" clips never linger. A failed moment keeps no videoUrl, so
@@ -368,21 +526,36 @@ export default function Home() {
     return !!m.imageUrl && !m.videoUrl
   }
 
-  // Sequential per the Kling rate rule (never parallel). Re-reads the latest project state
-  // each step so a clip that landed (or a moment that became ineligible) is skipped, and
-  // honors the cancel flag between items (in-flight clip still completes and is kept).
+  // Re-reads the latest project state before each item so a clip that landed (or a moment
+  // that became ineligible) is skipped, and checks the cancel flag before each SUBMIT.
+  //
+  // Cancel stops scheduling only. Clips already submitted are paid, running work at fal, so
+  // they are left to finish and land — abandoning them would burn the user's tokens for
+  // nothing. Nothing here refunds on cancel; the user keeps what they bought.
   async function runAnimateAll() {
     if (animatingAll) return // guard against a duplicate batch run
     const ids = projectRef.current.moments.filter(eligibleForAnimation).map((m) => m.id)
     if (ids.length === 0) return
     cancelAnimateAllRef.current = false
     setAnimatingAll(true)
-    for (const id of ids) {
-      if (cancelAnimateAllRef.current) break
-      const moment = projectRef.current.moments.find((m) => m.id === id)
-      if (!moment || !eligibleForAnimation(moment)) continue
-      await handleAnimate(moment)
+
+    // Shared cursor: workers pull the next id, so a slow clip never blocks the others.
+    // Single-threaded JS makes the increment safe without a lock.
+    let cursor = 0
+    const width = isHosted() ? Math.min(ANIMATE_CONCURRENCY, ids.length) : 1
+
+    async function worker() {
+      for (;;) {
+        if (cancelAnimateAllRef.current) return
+        const id = ids[cursor++]
+        if (id === undefined) return
+        const moment = projectRef.current.moments.find((m) => m.id === id)
+        if (!moment || !eligibleForAnimation(moment)) continue
+        await handleAnimate(moment)
+      }
     }
+
+    await Promise.all(Array.from({ length: width }, () => worker()))
     setAnimatingAll(false)
   }
 
@@ -395,13 +568,28 @@ export default function Home() {
     const { stylePreset, characters, settings } = projectRef.current
     const { composeCharacterDescription, castForMoment, settingForMoment } = await import('@/lib/prompts')
     const cast = castForMoment(characters, moment.characterNames)
-    const result = await generateAnchoredMomentVideo(
-      moment,
-      stylePreset,
-      composeCharacterDescription(cast),
-      settingForMoment(settings, moment.locationName)?.description ?? null,
-      cast.map((c) => c.name)
-    )
+    const characterDescription = composeCharacterDescription(cast)
+    const settingDescription = settingForMoment(settings, moment.locationName)?.description ?? null
+    const castNames = cast.map((c) => c.name)
+
+    const result = isHosted()
+      ? await resolveJob(
+          await submitAnchoredVideoJob(
+            moment,
+            stylePreset,
+            characterDescription,
+            settingDescription,
+            castNames,
+            persistContextRef.current.rowId
+          )
+        ).then((r) => (r.ok ? ({ ok: true as const, ...r.result }) : r))
+      : await generateAnchoredMomentVideo(
+          moment,
+          stylePreset,
+          characterDescription,
+          settingDescription,
+          castNames
+        )
 
     if (result.ok) {
       setProject((prev) => ({
@@ -460,7 +648,18 @@ export default function Home() {
       }
     }
 
-    const result = await generateBridgeVideo(fromMoment, toMoment, existing, direction, startFrame)
+    const result = isHosted()
+      ? await resolveJob(
+          await submitBridgeJob(
+            fromMoment,
+            toMoment,
+            existing,
+            direction,
+            startFrame,
+            persistContextRef.current.rowId
+          )
+        ).then((r) => (r.ok ? ({ ok: true as const, ...r.result, transitionPrompt: r.result.videoPrompt }) : r))
+      : await generateBridgeVideo(fromMoment, toMoment, existing, direction, startFrame)
 
     if (result.ok) {
       setProject((prev) => {
@@ -1107,19 +1306,51 @@ export default function Home() {
                       >
                         Cancel
                       </button>
+                      {/* Cancel stops scheduling, but clips already sent to the provider are
+                          paid and will finish — say so before they click, not after. */}
+                      <span className="text-[12px] text-[var(--text-tertiary)]">
+                        Cancel stops the ones that haven’t started. Clips already running finish and stay charged —
+                        their tokens aren’t refunded.
+                      </span>
                     </>
                   ) : animatableCount > 0 ? (
-                    <button
-                      type="button"
-                      onClick={runAnimateAll}
-                      disabled={queueRunning || generatingVideoIds.size > 0}
-                      className="text-[12px] text-foreground/80 transition-colors hover:text-foreground disabled:opacity-40"
-                    >
-                      {failedAnimationCount > 0
-                        ? `Retry animation (${failedAnimationCount} failed)`
-                        : `Animate all (${animatableCount})`}{' '}
-                      ≈ ${(animatableCount * ESTIMATED_COST_PER_VIDEO_USD).toFixed(2)}
-                    </button>
+                    confirmAnimateAll ? (
+                      <>
+                        <span className="text-[12px] text-[var(--text-tertiary)]">
+                          Animate {animatableCount}? Up to {ANIMATE_CONCURRENCY} render at once. Cancelling stops
+                          only the ones that haven’t started — anything already running is charged and not refunded.
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setConfirmAnimateAll(false)
+                            void runAnimateAll()
+                          }}
+                          className="text-[12px] text-foreground transition-colors hover:text-foreground"
+                        >
+                          Animate ≈ ${(animatableCount * ESTIMATED_COST_PER_VIDEO_USD).toFixed(2)}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setConfirmAnimateAll(false)}
+                          className="text-[12px] text-[var(--muted-foreground)] transition-colors hover:text-foreground"
+                        >
+                          Keep editing
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setConfirmAnimateAll(true)}
+                        disabled={queueRunning || generatingVideoIds.size > 0}
+                        className="text-[12px] text-foreground/80 transition-colors hover:text-foreground disabled:opacity-40"
+                      >
+                        {failedAnimationCount > 0
+                          ? `Retry animation (${failedAnimationCount} failed)`
+                          : `Animate all (${animatableCount})`}{' '}
+                        ≈ ${(animatableCount * ESTIMATED_COST_PER_VIDEO_USD).toFixed(2)}
+                      </button>
+                    )
                   ) : animatedCount > 0 ? (
                     <>
                       <span className="text-[12px] text-[var(--text-tertiary)]">All {animatedCount} animated ✓</span>

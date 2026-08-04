@@ -146,5 +146,17 @@ balance. Projects for signed-in users now persist server-side (RLS-scoped to the
    generation lost now. Anonymous demo users mirror nothing (unchanged $0 path).
    Bucket cap is 100 MB/object; stills reuse the bytes the validator already downloaded, so
    a still is never fetched twice.
-5. Async Kling jobs (fal webhook/poll) for serverless reliability.
+5. **Async Kling jobs for serverless reliability.** ✅
+   **Run `supabase/migrations/0005_render_jobs.sql`.** Signed-in users submit clips to fal's
+   *queue* and the `request_id` is persisted, so a closed tab, a refresh, or a function
+   timeout no longer destroys a paid clip — `listOpenJobs()` reattaches on load. Polling, not
+   webhooks: a webhook needs a public HTTPS endpoint and can't be exercised locally, while
+   durability comes from the row in Postgres either way (a webhook can be layered on the same
+   rows later). Job state is service-role-only — a user who could mark their own job failed
+   would collect a refund for work that succeeded. Concurrency: **up to 3 clips in flight**
+   during Animate All (stills stay strictly sequential). **Cancel stops scheduling only** —
+   clips already submitted are billed by fal, so they finish, land, and are **not refunded**;
+   the UI says this before and during the batch. Refunds happen only on genuine failure or a
+   >30 min stale job. The anonymous $0 demo keeps the original blocking path (no DB to hold a
+   job), which is why `maxDuration = 300` stays in `page.tsx`.
 6. Stripe Checkout (test) + signature-verified webhook crediting.
