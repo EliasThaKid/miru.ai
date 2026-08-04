@@ -16,7 +16,9 @@ go-live checklist. The $0 localStorage demo still works for anyone not signed in
 1. **Supabase project** (Auth + Postgres + Storage). Copy from Project Settings → API:
    - Project URL and **anon** key → safe for the browser.
    - **service_role** key → server-only secret. Never ships to the client.
-2. **Run the migrations in order** — `0001_init.sql`, `0002_metering.sql`, `0003_storage.sql`
+2. **Run the migrations in order** — `0001_init.sql`, `0002_metering.sql`, `0003_storage.sql`,
+   `0004_refund_hardening.sql` (**apply this one to any existing project immediately** — it
+   closes a hole where any signed-in user could credit themselves unlimited tokens)
    (Supabase SQL editor, or `supabase db push`). `0003` creates the private `assets` bucket
    and its owner-scoped policies, so there is nothing to create by hand in the dashboard.
 3. **Stripe account** (start in **Test mode**). You'll need the test secret key, the publishable
@@ -57,8 +59,13 @@ GLOBAL_DAILY_TOKEN_CEILING=5000                 # kill-switch: stop all paid gen
 ## The safety model (why this can't quietly bankrupt you)
 
 - **Server is the only authority on balances.** Clients can read their balance/ledger but have
-  **no write grants**; tokens move only through the atomic `spend_tokens` / `refund_tokens` /
-  `apply_purchase` functions in the migration.
+  **no write grants**; tokens move only through the atomic `spend_tokens` / `refund_spend` /
+  `apply_purchase` functions in the migrations.
+- **Nothing that CREDITS tokens is reachable with a user JWT.** `refund_spend` and
+  `apply_purchase` require the service role. Only `spend_tokens` is user-callable, because
+  calling it directly can only drain your own balance and can't trigger a paid fal call.
+  `SUPABASE_SERVICE_ROLE_KEY` is therefore **required** from Phase 3 onward — without it,
+  failed generations are not refunded (the server logs `REFUND SKIPPED` loudly).
 - **Deduct-before-generate, refund-on-failure.** Every generation Server Action spends tokens
   first (atomic `UPDATE ... WHERE tokens >= amount`, so no double-spend), calls fal, and
   refunds if fal fails.

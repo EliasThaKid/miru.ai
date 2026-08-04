@@ -1,3 +1,4 @@
+import { createAdminClient, isServiceRoleConfigured } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { isSupabaseConfigured } from '@/lib/supabase/client'
 
@@ -67,17 +68,42 @@ export async function beginGeneration(
     refund: async () => {
       if (refunded) return
       refunded = true
-      const refundReason = reason.replace(/^spend:/, 'refund:')
-      const { error: refundError } = await supabase.rpc('refund_tokens', {
-        p_amount: amount,
-        p_reason: refundReason,
-        p_ref: ref,
-      })
-      // A failed refund is logged (server-side) but never surfaced — the original generation
-      // error is what the user needs to see, and the refund can be reconciled from the ledger.
-      if (refundError) console.error('[metering] refund failed:', refundError.message)
+      await refundSpend(user.id, amount, reason.replace(/^spend:/, 'refund:'), ref)
     },
   }
+}
+
+// Credit tokens back after a failed generation. This runs with the SERVICE ROLE, never the
+// user's JWT: `refund_tokens` is no longer callable by `authenticated` (see
+// 0004_refund_hardening.sql), because a user-reachable "add tokens to my balance" RPC is an
+// unlimited-money bug. `refund_spend` additionally refuses to exceed what was really spent
+// against this ref, so a bug here cannot mint tokens either.
+//
+// Exported so async job completion (Phase 5) refunds through exactly this path.
+export async function refundSpend(
+  userId: string,
+  amount: number,
+  reason: string,
+  ref: string
+): Promise<void> {
+  if (!isServiceRoleConfigured()) {
+    // Loud, because the user has been charged for work that failed. Reconcile from the
+    // ledger and set SUPABASE_SERVICE_ROLE_KEY — refunds cannot run without it.
+    console.error(
+      `[metering] REFUND SKIPPED (${amount} tokens, ref=${ref}): SUPABASE_SERVICE_ROLE_KEY is not set.`
+    )
+    return
+  }
+
+  const { error } = await createAdminClient().rpc('refund_spend', {
+    p_user_id: userId,
+    p_amount: amount,
+    p_reason: reason,
+    p_ref: ref,
+  })
+  // A failed refund is logged server-side but never surfaced — the original generation error
+  // is what the user needs to see, and the refund can be reconciled from the ledger.
+  if (error) console.error('[metering] refund failed:', error.message)
 }
 
 // Map raised Postgres exceptions to user-facing copy. The messages arrive as the exception
