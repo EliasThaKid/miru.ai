@@ -80,6 +80,93 @@ export async function animateMoment(
   return url
 }
 
+// ---------------------------------------------------------------------------------------
+// Queue API (Phase 5) — submit now, collect later.
+//
+// The blocking `subscribe` calls above hold a serverless function open for the whole 2-5
+// minute render. These wrappers submit to fal's queue and hand back a `request_id`, so the
+// work outlives the request that started it. Same endpoints and params as the sync paths —
+// only the transport differs, so nothing here re-validates a slug.
+// ---------------------------------------------------------------------------------------
+
+export const FAL_ENDPOINTS = {
+  klingImageToVideo: 'fal-ai/kling-video/v1.6/standard/image-to-video',
+  klingDualKeyframe: 'fal-ai/kling-video/o3/standard/image-to-video',
+} as const
+
+export async function submitAnimateMoment(
+  imageUrl: string,
+  motionPrompt: string,
+  duration: '5' | '10' = '5'
+): Promise<string> {
+  const { request_id } = await fal.queue.submit(FAL_ENDPOINTS.klingImageToVideo, {
+    input: { prompt: motionPrompt, image_url: imageUrl, duration },
+  })
+  return request_id
+}
+
+export async function submitDualKeyframe(
+  startImageUrl: string,
+  endImageUrl: string,
+  prompt: string
+): Promise<string> {
+  const { request_id } = await fal.queue.submit(FAL_ENDPOINTS.klingDualKeyframe, {
+    input: {
+      image_url: startImageUrl,
+      end_image_url: endImageUrl,
+      prompt,
+      duration: '5',
+      generate_audio: false,
+    },
+  })
+  return request_id
+}
+
+export type FalJobState =
+  | { state: 'pending'; queuePosition: number | null }
+  | { state: 'done'; videoUrl: string }
+  | { state: 'failed'; error: string }
+
+// A transient network blip must NOT be read as a failed render — that would refund a job
+// that is still running and later succeeds. Only a definitive HTTP answer from fal (a 4xx/5xx
+// that isn't rate limiting) is treated as failure; anything else stays pending and the next
+// poll asks again.
+function isDefinitiveFailure(err: unknown): boolean {
+  const status = (err as { status?: unknown })?.status
+  return typeof status === 'number' && status >= 400 && status !== 429
+}
+
+export async function pollVideoJob(endpoint: string, requestId: string): Promise<FalJobState> {
+  let status
+  try {
+    status = await fal.queue.status(endpoint, { requestId })
+  } catch (err) {
+    if (!isDefinitiveFailure(err)) return { state: 'pending', queuePosition: null }
+    return { state: 'failed', error: err instanceof Error ? err.message : 'fal rejected the request.' }
+  }
+
+  if (status.status !== 'COMPLETED') {
+    return {
+      state: 'pending',
+      queuePosition: status.status === 'IN_QUEUE' ? status.queue_position : null,
+    }
+  }
+
+  // COMPLETED means the run finished, not that it succeeded — a failed run surfaces when we
+  // ask for the result, so an error here is always definitive.
+  try {
+    const result = await fal.queue.result(endpoint, { requestId })
+    const url = (result.data as { video?: { url?: string } } | undefined)?.video?.url
+    if (!url) return { state: 'failed', error: 'Video generation failed — no video was returned.' }
+    return { state: 'done', videoUrl: url }
+  } catch (err) {
+    return {
+      state: 'failed',
+      error: err instanceof Error ? err.message : 'Video generation failed. Please try again.',
+    }
+  }
+}
+
 // Uploads a browser-captured frame (JPEG data URL) to FAL storage and returns a fetchable
 // https URL. Used when a bridge must start from the final frame of an animated moment —
 // FAL keyframe params want a URL, and storage upload keeps the queue payload small.
