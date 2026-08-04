@@ -1,12 +1,14 @@
 'use server'
 
+import { mirrorAsset } from '@/lib/asset-store'
 import { generateBridge, uploadFrame } from '@/lib/fal'
 import { beginGeneration, tokenCost } from '@/lib/metering'
 import { buildTransitionPrompt } from '@/lib/prompts'
 import type { Moment, Transition } from '@/types'
 
 export type GenerateBridgeResult =
-  | { ok: true; videoUrl: string; transitionPrompt: string }
+  // videoStoragePath is the durable reference for a mirrored bridge clip.
+  | { ok: true; videoUrl: string; transitionPrompt: string; videoStoragePath: string | null }
   | { ok: false; error: string }
 
 export async function generateBridgeVideo(
@@ -23,7 +25,12 @@ export async function generateBridgeVideo(
   // If a bridge was already generated for this pair, return it instantly rather than
   // re-calling the API — even if the pair is currently set to Hard Cut.
   if (existing?.videoUrl) {
-    return { ok: true, videoUrl: existing.videoUrl, transitionPrompt: existing.transitionPrompt ?? '' }
+    return {
+      ok: true,
+      videoUrl: existing.videoUrl,
+      transitionPrompt: existing.transitionPrompt ?? '',
+      videoStoragePath: existing.videoStoragePath ?? null,
+    }
   }
 
   if (!fromMoment.imageUrl || !toMoment.imageUrl) {
@@ -37,7 +44,13 @@ export async function generateBridgeVideo(
     const startImageUrl = startFrameDataUrl ? await uploadFrame(startFrameDataUrl) : fromMoment.imageUrl
     const transitionPrompt = buildTransitionPrompt(fromMoment.description, toMoment.description, bridgeDirection)
     const videoUrl = await generateBridge(startImageUrl, toMoment.imageUrl, transitionPrompt)
-    return { ok: true, videoUrl, transitionPrompt }
+    const mirrored = await mirrorAsset(videoUrl, 'clip', `bridge-${fromMoment.id}-${toMoment.id}`)
+    return {
+      ok: true,
+      videoUrl: mirrored?.url ?? videoUrl,
+      transitionPrompt,
+      videoStoragePath: mirrored?.path ?? null,
+    }
   } catch (err) {
     await meter.refund()
     return {

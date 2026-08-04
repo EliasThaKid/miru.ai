@@ -1,6 +1,7 @@
 'use server'
 
 import { createHash, randomUUID } from 'node:crypto'
+import { mirrorBytes } from '@/lib/asset-store'
 import { generateImage } from '@/lib/fal'
 import { AssetError, fetchAndDecodeImage, type RenderStage } from '@/lib/image-validate'
 import { beginGeneration, tokenCost } from '@/lib/metering'
@@ -8,7 +9,9 @@ import { resolveImagePrompt } from '@/lib/prompts'
 import type { Moment, StylePreset } from '@/types'
 
 export type GenerateImageResult =
-  | { ok: true; imageUrl: string; imagePrompt: string }
+  // imageStoragePath is the durable reference for a mirrored still; null means the still
+  // lives only at the (temporary) provider URL.
+  | { ok: true; imageUrl: string; imagePrompt: string; imageStoragePath: string | null }
   | { ok: false; error: string; stage: RenderStage }
 
 const DEV = process.env.NODE_ENV !== 'production'
@@ -45,7 +48,12 @@ export async function generateMomentImage(
   // If an image already exists for this moment, return it instantly rather than re-calling
   // the API — a cached hit is free (no tokens spent).
   if (moment.imageUrl) {
-    return { ok: true, imageUrl: moment.imageUrl, imagePrompt: moment.imagePrompt ?? '' }
+    return {
+      ok: true,
+      imageUrl: moment.imageUrl,
+      imagePrompt: moment.imagePrompt ?? '',
+      imageStoragePath: moment.imageStoragePath ?? null,
+    }
   }
 
   // Reserve tokens before any paid work; refund on failure below.
@@ -103,8 +111,19 @@ export async function generateMomentImage(
       diag({ stage: 'review', attemptId, momentId: moment.id, warning: 'suspiciously uniform/near-black frame — kept, flagged for manual review' })
     }
 
-    // ---- persist (caller writes state) ----
-    return { ok: true, imageUrl, imagePrompt }
+    // ---- persist ----
+    // Mirror the validated bytes into the user's Storage folder so the project doesn't rot
+    // when fal's CDN URL expires. Best-effort: a failure keeps the provider URL.
+    stage = 'persist'
+    const mirrored = await mirrorBytes(asset.buffer, asset.contentType, 'still', moment.id, imageUrl)
+    diag({ stage: 'persist', attemptId, mirrored: !!mirrored })
+
+    return {
+      ok: true,
+      imageUrl: mirrored?.url ?? imageUrl,
+      imagePrompt,
+      imageStoragePath: mirrored?.path ?? null,
+    }
   } catch (err) {
     // No usable image was produced — refund the reserved tokens.
     await meter.refund()

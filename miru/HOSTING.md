@@ -16,8 +16,9 @@ go-live checklist. The $0 localStorage demo still works for anyone not signed in
 1. **Supabase project** (Auth + Postgres + Storage). Copy from Project Settings → API:
    - Project URL and **anon** key → safe for the browser.
    - **service_role** key → server-only secret. Never ships to the client.
-2. **Run the migration** `supabase/migrations/0001_init.sql` (Supabase SQL editor, or
-   `supabase db push`). Then create a **Storage bucket** named `assets` (private).
+2. **Run the migrations in order** — `0001_init.sql`, `0002_metering.sql`, `0003_storage.sql`
+   (Supabase SQL editor, or `supabase db push`). `0003` creates the private `assets` bucket
+   and its owner-scoped policies, so there is nothing to create by hand in the dashboard.
 3. **Stripe account** (start in **Test mode**). You'll need the test secret key, the publishable
    key, and — after you create the webhook endpoint — the webhook signing secret.
 4. **Vercel project** pointed at this repo; set the env vars below in Project Settings.
@@ -124,6 +125,19 @@ balance. Projects for signed-in users now persist server-side (RLS-scoped to the
    (no `auth.uid()` there, so match by email):
    `update token_balances set tokens = 500 where user_id = (select id from auth.users where email = 'you@example.com');`
    — or raise the welcome grant in `0001_init.sql`.
-4. Persist fal outputs into Storage (stills/clips) so projects don't rot.
+4. **Persist fal outputs into Storage** (stills/clips) so projects don't rot. ✅
+   **Run `supabase/migrations/0003_storage.sql`** — it creates the private `assets` bucket
+   and owner-scoped `storage.objects` policies (`assets/<user-id>/<kind>/…`). Every paid
+   output (still, end-pose still, moment clip, anchored clip, bridge clip) is mirrored into
+   the signed-in user's folder right after generation, and the project stores the durable
+   object **path** (`imageStoragePath`, `endImageStoragePath`, `videoStoragePath`).
+   Display URLs are 7-day **signed URLs**, re-minted for every path on each project load
+   (`refreshAssetUrls` in `lib/project-store.ts`) — nothing persisted can go stale, and a
+   private bucket means the only way to view an asset is a signature its owner can mint.
+   Mirroring is **best-effort**: if Storage is unreachable the action returns fal's URL as
+   before and logs `[assets] mirror failed` — a project that rots later beats a paid
+   generation lost now. Anonymous demo users mirror nothing (unchanged $0 path).
+   Bucket cap is 100 MB/object; stills reuse the bytes the validator already downloaded, so
+   a still is never fetched twice.
 5. Async Kling jobs (fal webhook/poll) for serverless reliability.
 6. Stripe Checkout (test) + signature-verified webhook crediting.

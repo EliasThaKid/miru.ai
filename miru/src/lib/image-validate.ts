@@ -20,6 +20,9 @@ export class AssetError extends Error {
 export interface ImageAssetInfo {
   contentType: string | null
   bytes: number
+  // The fetched bytes, kept so a caller that needs to persist the asset (Storage mirroring)
+  // doesn't have to download it a second time. Never log or spread this into diagnostics.
+  buffer: Buffer
   width: number
   height: number
   format: string | undefined
@@ -31,7 +34,9 @@ export interface ImageAssetInfo {
 // Decode bytes → dimensions + a soft `uniform` flag. Throws ONLY on empty / undecodable /
 // zero-dimension data. sharp supports JPEG, PNG and WebP; `failOn: 'none'` tolerates minor
 // corruption so a slightly-truncated but decodable frame is not falsely rejected.
-export async function decodeImage(buffer: Buffer): Promise<Omit<ImageAssetInfo, 'contentType' | 'bytes'>> {
+export async function decodeImage(
+  buffer: Buffer
+): Promise<Omit<ImageAssetInfo, 'contentType' | 'bytes' | 'buffer'>> {
   if (!buffer || buffer.byteLength === 0) {
     throw new AssetError('asset-decode', 'asset was empty (zero bytes)')
   }
@@ -80,5 +85,5 @@ export async function fetchAndDecodeImage(url: string): Promise<ImageAssetInfo> 
   const contentType = res.headers.get('content-type')
   const buffer = Buffer.from(await res.arrayBuffer())
   const decoded = await decodeImage(buffer)
-  return { contentType, bytes: buffer.byteLength, ...decoded }
+  return { contentType, bytes: buffer.byteLength, buffer, ...decoded }
 }

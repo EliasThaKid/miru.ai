@@ -114,6 +114,13 @@ export interface Moment {
   locationName?: string | null
   // Cached end-pose still for dual-keyframe animation (paid asset — kept once generated).
   endImageUrl?: string | null
+  // Durable Storage object paths for the three paid assets above. These — not the *Url
+  // fields — are what survives: provider URLs and signed URLs both expire, so every load
+  // re-mints display URLs from these paths (see lib/assets.ts). null/undefined = the asset
+  // was never mirrored (anonymous demo, or mirroring failed) and the URL is all we have.
+  imageStoragePath?: string | null
+  endImageStoragePath?: string | null
+  videoStoragePath?: string | null
   // Which model produced the current clip (provenance): Kling 1.6 single-frame or
   // Kling O3 dual-keyframe. undefined = legacy → Kling 1.6.
   videoModel?: 'kling-1.6' | 'kling-o3-anchored' | null
@@ -144,6 +151,8 @@ export interface Transition {
   // Generated-bridge fields. videoUrl is KEPT when mode flips back to 'hard-cut' so a
   // paid generation is never discarded; absence of a Transition record means Hard Cut.
   videoUrl: string | null
+  // Durable Storage object path for the bridge clip (see Moment's *StoragePath fields).
+  videoStoragePath?: string | null
   transitionPrompt: string | null
   bridgeDirection: string | null
   generatedAt: string | null

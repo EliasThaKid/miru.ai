@@ -1,6 +1,8 @@
+import { applySignedUrls, ASSET_BUCKET, collectAssetPaths, SIGNED_URL_TTL_SECONDS } from '@/lib/assets'
 import { createClient, isSupabaseConfigured } from '@/lib/supabase/client'
 import { loadProject as loadLocal, saveProject as saveLocal } from '@/lib/storage'
 import type { Project } from '@/types'
+import type { SupabaseClient } from '@supabase/supabase-js'
 
 // Where the active project is persisted for THIS session. Signed-in → a row in the
 // `projects` table (RLS scopes it to the user); anonymous → localStorage (the $0 demo).
@@ -17,6 +19,28 @@ export const ANON_CONTEXT: PersistContext = { userId: null, rowId: null }
 function normalize(project: Project): Project {
   if (!Array.isArray(project.settings)) project.settings = []
   return project
+}
+
+// Mint fresh display URLs for every mirrored asset. The stored *StoragePath fields are the
+// durable references (see lib/assets.ts); the URLs saved alongside them are expiring copies,
+// so a project is only guaranteed to display correctly after this runs. Signing needs no
+// special privilege — the storage RLS policy already scopes objects to their owner. A signing
+// failure is non-fatal: the project loads with whatever URLs it was saved with.
+async function refreshAssetUrls(supabase: SupabaseClient, project: Project): Promise<Project> {
+  const paths = collectAssetPaths(project)
+  if (paths.length === 0) return project
+
+  const { data, error } = await supabase.storage
+    .from(ASSET_BUCKET)
+    .createSignedUrls(paths, SIGNED_URL_TTL_SECONDS)
+  if (error || !data) return project
+
+  const signed = new Map<string, string>()
+  for (const entry of data) {
+    // The API returns one entry per requested path, each with its own error field.
+    if (entry.path && entry.signedUrl && !entry.error) signed.set(entry.path, entry.signedUrl)
+  }
+  return applySignedUrls(project, signed)
 }
 
 // Load the active project for the current session. Signed-in users read their most-recent
@@ -53,15 +77,19 @@ export async function loadActiveProject(): Promise<{
 
   if (data) {
     return {
-      project: normalize(data.data as Project),
+      project: await refreshAssetUrls(supabase, normalize(data.data as Project)),
       context: { userId: user.id, rowId: data.id },
     }
   }
 
   // No DB project yet — migrate a local draft up on first sign-in (rowId stays null until
-  // the first save inserts it).
+  // the first save inserts it). The draft can still carry mirrored assets: a failed cloud
+  // save falls back to localStorage, so re-sign its paths too.
   const local = loadLocal()
-  return { project: local ? normalize(local) : null, context: { userId: user.id, rowId: null } }
+  return {
+    project: local ? await refreshAssetUrls(supabase, normalize(local)) : null,
+    context: { userId: user.id, rowId: null },
+  }
 }
 
 // Persist the active project. Anonymous → localStorage. Signed-in → update the existing row,

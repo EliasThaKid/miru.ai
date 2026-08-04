@@ -1,12 +1,22 @@
 'use server'
 
+import { mirrorAsset } from '@/lib/asset-store'
 import { generateBridge, generateImage } from '@/lib/fal'
 import { beginGeneration, tokenCost } from '@/lib/metering'
 import { buildImagePrompt, buildVideoPrompt } from '@/lib/prompts'
 import type { Moment, StylePreset } from '@/types'
 
 export type GenerateAnchoredVideoResult =
-  | { ok: true; videoUrl: string; videoPrompt: string; endImageUrl: string }
+  | {
+      ok: true
+      videoUrl: string
+      videoPrompt: string
+      endImageUrl: string
+      // Durable Storage references (null when not mirrored). The end still is only re-mirrored
+      // when it was freshly rendered — a reused one keeps the path it already had.
+      videoStoragePath: string | null
+      endImageStoragePath: string | null
+    }
   | { ok: false; error: string }
 
 // Dual-keyframe animation: renders the moment's END pose as a second still, then animates
@@ -36,6 +46,7 @@ export async function generateAnchoredMomentVideo(
   try {
     // Reuse a previously paid end still; otherwise render the closing pose.
     let endImageUrl = moment.endImageUrl ?? null
+    let endImageStoragePath = moment.endImageStoragePath ?? null
     if (!endImageUrl) {
       endImageUrl = await generateImage(
         buildImagePrompt(
@@ -49,11 +60,26 @@ export async function generateAnchoredMomentVideo(
           moment.blocking
         )
       )
+      // Mirror the fresh end still before it is handed to Kling — the O3 call accepts either
+      // URL, and mirroring first means the paid still is durable even if the clip fails.
+      const mirroredStill = await mirrorAsset(endImageUrl, 'still', `${moment.id}-end`)
+      if (mirroredStill) {
+        endImageUrl = mirroredStill.url
+        endImageStoragePath = mirroredStill.path
+      }
     }
 
     const videoPrompt = buildVideoPrompt(moment.shotType, moment.motion ?? moment.description, 5)
     const videoUrl = await generateBridge(moment.imageUrl, endImageUrl, videoPrompt)
-    return { ok: true, videoUrl, videoPrompt, endImageUrl }
+    const mirroredClip = await mirrorAsset(videoUrl, 'clip', `${moment.id}-anchored`)
+    return {
+      ok: true,
+      videoUrl: mirroredClip?.url ?? videoUrl,
+      videoPrompt,
+      endImageUrl,
+      videoStoragePath: mirroredClip?.path ?? null,
+      endImageStoragePath,
+    }
   } catch (err) {
     await meter.refund()
     return {

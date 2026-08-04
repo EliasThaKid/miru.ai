@@ -22,6 +22,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { extractLastFrame } from '@/lib/extract-frame'
 import { isDescriptionWeak, parseAvoid } from '@/lib/prompts'
 import { loadActiveProject, saveActiveProject, ANON_CONTEXT, type PersistContext } from '@/lib/project-store'
+import { newId } from '@/lib/utils'
 import type { Character, ConnectionMode, Moment, Project, Setting, StylePreset, Transition, VisualFocus } from '@/types'
 
 // Extends the Server Action timeout for this page — Kling 1.6 (generateMomentVideo)
@@ -118,7 +119,7 @@ export default function Home() {
       setProject(
         existing ?? {
           ...EMPTY_PROJECT,
-          id: crypto.randomUUID(),
+          id: newId(),
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         }
@@ -245,7 +246,7 @@ export default function Home() {
   async function runRenderQueue(momentIds: string[]) {
     cancelRendersRef.current = false
     setQueueRunning(true)
-    const batchId = crypto.randomUUID().slice(0, 8)
+    const batchId = newId().slice(0, 8)
     for (const id of momentIds) {
       if (cancelRendersRef.current) break
       const moment = projectRef.current.moments.find((m) => m.id === id)
@@ -281,7 +282,13 @@ export default function Home() {
         ...prev,
         moments: prev.moments.map((m) =>
           m.id === moment.id
-            ? { ...m, imageUrl: result.imageUrl, imagePrompt: result.imagePrompt, imageGeneratedAt: new Date().toISOString() }
+            ? {
+                ...m,
+                imageUrl: result.imageUrl,
+                imageStoragePath: result.imageStoragePath,
+                imagePrompt: result.imagePrompt,
+                imageGeneratedAt: new Date().toISOString(),
+              }
             : m
         ),
         updatedAt: new Date().toISOString(),
@@ -303,11 +310,13 @@ export default function Home() {
     setProject((prev) => ({
       ...prev,
       moments: prev.moments.map((m) =>
-        m.id === moment.id ? { ...m, videoUrl: null, videoPrompt: null, videoGeneratedAt: null } : m
+        m.id === moment.id
+          ? { ...m, videoUrl: null, videoStoragePath: null, videoPrompt: null, videoGeneratedAt: null }
+          : m
       ),
       updatedAt: new Date().toISOString(),
     }))
-    await handleRenderFrame({ ...moment, imageUrl: null })
+    await handleRenderFrame({ ...moment, imageUrl: null, imageStoragePath: null })
   }
 
   // ---------- animation (Kling 1.6) ----------
@@ -326,6 +335,7 @@ export default function Home() {
             ? {
                 ...m,
                 videoUrl: result.videoUrl,
+                videoStoragePath: result.videoStoragePath,
                 videoPrompt: result.videoPrompt,
                 videoGeneratedAt: new Date().toISOString(),
                 videoModel: 'kling-1.6',
@@ -346,7 +356,7 @@ export default function Home() {
   }
 
   async function handleReAnimate(moment: Moment) {
-    await handleAnimate({ ...moment, videoUrl: null, videoPrompt: null })
+    await handleAnimate({ ...moment, videoUrl: null, videoStoragePath: null, videoPrompt: null })
   }
 
   // ---------- Animate All (sequential batch) ----------
@@ -401,9 +411,11 @@ export default function Home() {
             ? {
                 ...m,
                 videoUrl: result.videoUrl,
+                videoStoragePath: result.videoStoragePath,
                 videoPrompt: result.videoPrompt,
                 videoGeneratedAt: new Date().toISOString(),
                 endImageUrl: result.endImageUrl,
+                endImageStoragePath: result.endImageStoragePath,
                 videoModel: 'kling-o3-anchored',
               }
             : m
@@ -458,16 +470,18 @@ export default function Home() {
               ...found,
               mode: 'generated-bridge',
               videoUrl: result.videoUrl,
+              videoStoragePath: result.videoStoragePath,
               transitionPrompt: result.transitionPrompt,
               bridgeDirection: direction ?? found.bridgeDirection,
               generatedAt: new Date().toISOString(),
             }
           : {
-              id: crypto.randomUUID(),
+              id: newId(),
               fromMomentId: fromMoment.id,
               toMomentId: toMoment.id,
               mode: 'generated-bridge',
               videoUrl: result.videoUrl,
+              videoStoragePath: result.videoStoragePath,
               transitionPrompt: result.transitionPrompt,
               bridgeDirection: direction,
               generatedAt: new Date().toISOString(),
@@ -498,7 +512,7 @@ export default function Home() {
       const updated: Transition = found
         ? { ...found, mode: newMode }
         : {
-            id: crypto.randomUUID(),
+            id: newId(),
             fromMomentId: fromMoment.id,
             toMomentId: toMoment.id,
             mode: newMode,
@@ -561,7 +575,7 @@ export default function Home() {
   }
 
   function handleAddSetting() {
-    const setting: Setting = { id: crypto.randomUUID(), name: `Location ${project.settings.length + 1}`, description: '' }
+    const setting: Setting = { id: newId(), name: `Location ${project.settings.length + 1}`, description: '' }
     setProject((prev) => ({ ...prev, settings: [...prev.settings, setting], updatedAt: new Date().toISOString() }))
   }
 
@@ -690,8 +704,8 @@ export default function Home() {
       setDetectError(result.error)
       return null
     }
-    const characters: Character[] = result.characters.map((c) => ({ id: crypto.randomUUID(), ...c }))
-    const settings: Setting[] = result.settings.map((s) => ({ id: crypto.randomUUID(), ...s }))
+    const characters: Character[] = result.characters.map((c) => ({ id: newId(), ...c }))
+    const settings: Setting[] = result.settings.map((s) => ({ id: newId(), ...s }))
     setProject((prev) => {
       const nextCharacters = replace || prev.characters.length === 0 ? characters : prev.characters
       const nextSettings = replace || prev.settings.length === 0 ? settings : prev.settings
@@ -756,7 +770,7 @@ export default function Home() {
   }
 
   function handleAddCharacter() {
-    const character: Character = { id: crypto.randomUUID(), name: `Character ${project.characters.length + 1}`, description: '' }
+    const character: Character = { id: newId(), name: `Character ${project.characters.length + 1}`, description: '' }
     setProject((prev) => ({ ...prev, characters: [...prev.characters, character], updatedAt: new Date().toISOString() }))
   }
 
