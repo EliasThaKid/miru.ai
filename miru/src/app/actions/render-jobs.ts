@@ -269,7 +269,11 @@ async function persistJob(
   refund: () => Promise<void>,
   job: Parameters<typeof createRenderJob>[0]
 ): Promise<SubmitJobResult> {
-  const created = await createRenderJob(job)
+  // 'queued', explicitly: this job is ALREADY at fal and already charged. Letting it take
+  // createRenderJob's 'pending' default (which exists for batch rows that have not been
+  // submitted) makes a reload treat paid work as unstarted — stranding it, or re-submitting
+  // and charging for it twice.
+  const created = await createRenderJob({ ...job, status: 'queued' })
   if (!created) {
     console.error(
       `[jobs] ORPHANED fal request ${job.requestId} (${job.endpoint}) — job row could not be written; user refunded.`
@@ -335,6 +339,8 @@ export async function submitPendingClipJob(
   // The client supplies the moment, so the server must confirm it is the one this job is for.
   if (job.target_id !== moment.id) return { ok: false, error: 'That render job does not match this moment.' }
   if (job.status !== 'pending') return { ok: false, error: 'That render job has already started.' }
+  // Belt and braces against a double charge: a request id means fal already has this work.
+  if (job.request_id) return { ok: false, error: 'That render job has already started.' }
   if (!moment.imageUrl) return { ok: false, error: 'Render the frame first — animation starts from it.' }
 
   if (!(await claimPendingJob(jobId))) {
@@ -488,7 +494,11 @@ export async function listOpenJobs(): Promise<OpenJobSummary[]> {
     kind: job.kind,
     targetId: job.target_id,
     createdAt: job.created_at,
-    submitted: job.status !== 'pending',
+    // Keyed off the fal request, not the status column: a request id is proof the job was
+    // submitted and charged, whatever its label says. This also self-heals rows written
+    // before the status default was fixed, so a stranded paid clip resumes instead of
+    // being re-submitted.
+    submitted: job.request_id !== null,
   }))
 }
 

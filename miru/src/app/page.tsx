@@ -597,7 +597,12 @@ export default function Home() {
         if (job === undefined) return
 
         const moment = projectRef.current.moments.find((m) => m.id === job.targetId)
-        if (!moment || !eligibleForAnimation(moment)) continue
+        if (!moment || !eligibleForAnimation(moment)) {
+          // The clip landed (or the moment is gone) while this was queued. Retire the row so
+          // it doesn't come back as an open job on every future load.
+          void abandonPendingJobs([job.jobId])
+          continue
+        }
 
         pendingJobIdsRef.current = pendingJobIdsRef.current.filter((id) => id !== job.jobId)
         setGeneratingVideoIds((prev) => new Set(prev).add(moment.id))

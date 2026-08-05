@@ -132,6 +132,9 @@ export async function claimPendingJob(jobId: string): Promise<boolean> {
     .update({ status: 'queued' })
     .eq('id', jobId)
     .eq('status', 'pending')
+    // A row that already carries a fal request has been submitted and charged; it must never
+    // be claimable again, whatever its status column says.
+    .is('request_id', null)
     .select('id')
 
   if (error) {
@@ -205,5 +208,5 @@ export async function markRenderJobRunning(jobId: string): Promise<void> {
     .from('render_jobs')
     .update({ status: 'running' })
     .eq('id', jobId)
-    .eq('status', 'queued')
+    .in('status', ['pending', 'queued'])
 }
