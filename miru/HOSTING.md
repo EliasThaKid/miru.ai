@@ -102,6 +102,44 @@ The code degrades gracefully: with **no** Supabase env vars set, the app is the 
 That's it — restart `npm run dev`, and the left rail shows Sign in / your email + token
 balance. Projects for signed-in users now persist server-side (RLS-scoped to the user).
 
+## Deploying to Vercel (test-mode Stripe)
+
+Do this before live payments: Stripe wants a real HTTPS webhook endpoint, and a deployed URL
+is what you link from a portfolio.
+
+1. **Push the branch and import the repo** in Vercel. **Set the Root Directory to `miru`** —
+   the Next app is not at the repo root. Framework preset: Next.js. Build settings default.
+2. **Set every env var** from the list at the top of this file in Project Settings →
+   Environment Variables (Production + Preview). `SUPABASE_SERVICE_ROLE_KEY`, `FAL_KEY`,
+   `ANTHROPIC_API_KEY`, and `STRIPE_*` are server-only — do **not** prefix them with
+   `NEXT_PUBLIC_`, which would ship them to the browser.
+3. **Set the spend rails before the link is public.** These are the only thing between a
+   portfolio link and an open tab on your fal account:
+   ```bash
+   GLOBAL_DAILY_TOKEN_CEILING=200   # ~25 clips/day total; the kill-switch
+   DAILY_TOKEN_CAP_PER_USER=40      # ~5 clips/day per user
+   ```
+   Pick numbers you would shrug off losing in a day. Also run
+   `supabase/migrations/0007_welcome_grant.sql`, which drops the free signup grant from 20
+   tokens to 12 (one storyboard of stills, no clips).
+4. **Point Supabase at the deployed domain:** Authentication → URL Configuration → set Site
+   URL to `https://<your-app>.vercel.app` and add it to Redirect URLs, or `/auth/callback`
+   will bounce back to localhost. If you use GitHub OAuth, add the same domain as the OAuth
+   app's Homepage URL (the callback stays the Supabase one).
+5. **Turn "Confirm email" back ON** (Authentication → Providers → Email) before the link is
+   public — off, anyone can sign up with an address they don't own and take the free grant.
+6. **Add the production Stripe webhook:** Developers → Webhooks → Add endpoint →
+   `https://<your-app>/api/stripe/webhook`, event `checkout.session.completed`. Its signing
+   secret is **different** from the `stripe listen` one — put it in Vercel as
+   `STRIPE_WEBHOOK_SECRET`.
+7. **Smoke test the deployment:** sign up → render one still → buy a test pack with
+   `4242 4242 4242 4242` → confirm the balance rises → animate one moment → reload mid-render
+   and confirm it resumes.
+
+**Function timeouts:** `maxDuration = 60` in `page.tsx` is the Vercel **Hobby** ceiling. This
+works because Phase 5 submits renders to fal's queue instead of blocking on them. On Pro you
+may raise it, but nothing currently needs more.
+
 ## Go-live checklist (do NOT flip to live Stripe keys until all true)
 
 - [ ] **Legal/tax:** a real entity or individual on Stripe with tax info; Stripe Tax configured.

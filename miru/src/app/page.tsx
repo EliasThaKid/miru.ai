@@ -37,9 +37,15 @@ import { loadActiveProject, saveActiveProject, ANON_CONTEXT, type PersistContext
 import { newId } from '@/lib/utils'
 import type { Character, ConnectionMode, Moment, Project, Setting, StylePreset, Transition, VisualFocus } from '@/types'
 
-// Extends the Server Action timeout for this page — Kling 1.6 (generateMomentVideo)
-// typically takes 2-5 minutes and Kling O3 bridges ~1-2; the other actions finish in seconds.
-export const maxDuration = 300
+// Server Action timeout for this page. 60s is the Vercel Hobby ceiling; raise it toward 300
+// only on Pro, and only if you re-enable a blocking render path.
+//
+// Phase 5 is what makes 60 enough: signed-in generation now SUBMITS to fal's queue and polls,
+// so no action waits on a 2-5 minute Kling render. The longest remaining calls are the Claude
+// breakdown, a FLUX still, and a poll tick that mirrors a finished clip into Storage — all
+// comfortably inside a minute. The blocking fallback only runs in the unconfigured $0 demo,
+// where there is no serverless function involved.
+export const maxDuration = 60
 
 const STYLE_PRESETS: { value: StylePreset; label: string }[] = [
   { value: 'cinematic', label: 'Cinematic' },
