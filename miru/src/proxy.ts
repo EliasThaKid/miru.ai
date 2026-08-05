@@ -13,6 +13,8 @@ export const config = {
   matcher: [
     // Run on everything except Next internals and static image assets. Auth cookies must
     // still refresh on data/Server-Action routes, so we don't exclude those.
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)',
+    // The Stripe webhook is excluded: it is a server-to-server POST with no user session,
+    // authenticated by signature rather than cookies, and has no business touching them.
+    '/((?!_next/static|_next/image|favicon.ico|api/stripe/webhook|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)',
   ],
 }

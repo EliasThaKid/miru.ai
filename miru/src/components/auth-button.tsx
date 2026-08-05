@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { createClient, isSupabaseConfigured } from '@/lib/supabase/client'
+import { BuyTokens } from '@/components/buy-tokens'
 
 // Account control for the left rail. Anonymous users see a "Sign in" link (the demo keeps
 // working without an account); signed-in users see their email, live token balance, and a
@@ -108,6 +109,7 @@ export function AuthButton() {
           </button>
         </form>
       </div>
+      <BuyTokens />
     </div>
   )
 }

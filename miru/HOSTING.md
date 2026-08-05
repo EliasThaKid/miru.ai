@@ -159,4 +159,32 @@ balance. Projects for signed-in users now persist server-side (RLS-scoped to the
    the UI says this before and during the batch. Refunds happen only on genuine failure or a
    >30 min stale job. The anonymous $0 demo keeps the original blocking path (no DB to hold a
    job), which is why `maxDuration = 300` stays in `page.tsx`.
-6. Stripe Checkout (test) + signature-verified webhook crediting.
+6. **Stripe Checkout (test) + signature-verified webhook crediting.** ✅
+   No migration — `apply_purchase` has been in `0001` since Phase 1. Packs live in
+   `lib/stripe.ts` (server-side); the browser sends only a **pack id**, so a tampered request
+   can buy a pack that exists or nothing at all. The user id comes from the session cookie,
+   never the request body, so nobody can credit someone else's account. Card details never
+   touch the app — Checkout is Stripe-hosted.
+
+   **Setup (test mode):**
+   1. Stripe dashboard (Test mode) → Developers → API keys. Set `STRIPE_SECRET_KEY=sk_test_…`.
+   2. **Local webhook:** `stripe login`, then
+      `stripe listen --forward-to localhost:3000/api/stripe/webhook`. It prints a
+      `whsec_…` — that is your `STRIPE_WEBHOOK_SECRET` for local testing. Restart `npm run dev`.
+   3. **Deployed webhook:** Developers → Webhooks → Add endpoint →
+      `https://<your-app>/api/stripe/webhook`, event `checkout.session.completed`. Copy that
+      endpoint's signing secret into Vercel as `STRIPE_WEBHOOK_SECRET` (it differs from the
+      CLI one).
+   4. Test card `4242 4242 4242 4242`, any future expiry and CVC.
+
+   **Why this can't be forged or double-credited:** the endpoint is public, so nothing in the
+   body is believed until `constructEvent` verifies the signature against the signing secret —
+   a forged "payment succeeded" is rejected before it can credit anything. Only `paid`
+   sessions credit. Crediting goes through `apply_purchase`, which inserts the purchase row
+   first and no-ops on a duplicate session id, so Stripe's at-least-once delivery and retries
+   can't double-credit. A credit failure returns 500 **on purpose** so Stripe retries — the
+   payment is real and the tokens are owed. A paid session whose metadata is missing is logged
+   as `UNATTRIBUTABLE PAID SESSION` and must be credited by hand.
+
+   ⚠️ **Pack prices in `lib/stripe.ts` are placeholders, not validated economics.** Do the
+   unit-economics step in the go-live checklist before charging real money.
