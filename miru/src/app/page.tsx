@@ -8,10 +8,13 @@ import { generateMomentVideo } from '@/app/actions/generate-moment-video'
 import { generateAnchoredMomentVideo } from '@/app/actions/generate-anchored-video'
 import { generateBridgeVideo } from '@/app/actions/generate-bridge'
 import {
+  abandonPendingJobs,
   listOpenJobs,
+  startAnimateBatch,
   submitAnchoredVideoJob,
   submitBridgeJob,
   submitMomentVideoJob,
+  submitPendingClipJob,
   type RenderJobResult,
   type SubmitJobResult,
 } from '@/app/actions/render-jobs'
@@ -28,7 +31,7 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Textarea } from '@/components/ui/textarea'
 import { extractLastFrame } from '@/lib/extract-frame'
-import { awaitRenderJob } from '@/lib/job-poller'
+import { JobWatcher } from '@/lib/job-poller'
 import { isDescriptionWeak, parseAvoid } from '@/lib/prompts'
 import { loadActiveProject, saveActiveProject, ANON_CONTEXT, type PersistContext } from '@/lib/project-store'
 import { newId } from '@/lib/utils'
@@ -121,6 +124,13 @@ export default function Home() {
   const listingSeqRef = useRef(0)
   const cancelRendersRef = useRef(false)
   const cancelAnimateAllRef = useRef(false)
+  // One shared poller for every in-flight job (see JobWatcher): N independent pollers each
+  // fired a Server Action, and every one of those re-renders the tree, which is what made the
+  // status indicators churn.
+  const watcherRef = useRef<JobWatcher | null>(null)
+  if (watcherRef.current === null) watcherRef.current = new JobWatcher()
+  // Pending (unsubmitted) jobs of the current batch, so Cancel can abandon exactly those.
+  const pendingJobIdsRef = useRef<string[]>([])
   // Where the active project persists (DB row when signed in, else localStorage). Held in a
   // ref so the debounced save always reads the latest context without re-subscribing.
   const persistContextRef = useRef<PersistContext>(ANON_CONTEXT)
@@ -159,7 +169,14 @@ export default function Home() {
     const open = await listOpenJobs()
     if (open.length === 0) return
 
-    for (const job of open) {
+    // Never-submitted clips from an interrupted batch: pick the scheduling back up rather
+    // than stranding them. Nothing was charged for these yet.
+    const unsubmitted = open.filter((job) => !job.submitted && job.kind === 'clip')
+    if (unsubmitted.length > 0) {
+      void drainPendingJobs(unsubmitted.map((job) => ({ jobId: job.jobId, targetId: job.targetId })))
+    }
+
+    for (const job of open.filter((j) => j.submitted)) {
       if (job.kind === 'bridge') {
         const [fromId] = job.targetId.split('->')
         setGeneratingBridgeIds((prev) => new Set(prev).add(fromId))
@@ -167,7 +184,7 @@ export default function Home() {
         setGeneratingVideoIds((prev) => new Set(prev).add(job.targetId))
       }
 
-      void awaitRenderJob(job.jobId).then((polled) => {
+      void watcherRef.current!.watch(job.jobId).then((polled) => {
         if (polled.ok && polled.status === 'done') {
           applyJobResult(job.kind, job.targetId, polled.result)
         } else if (!polled.ok) {
@@ -275,11 +292,12 @@ export default function Home() {
   const slotStatus = useCallback(
     (moment: Moment): SlotStatus => {
       if (generatingImageIds.has(moment.id)) return 'rendering'
+      if (generatingVideoIds.has(moment.id)) return 'animating'
       if (moment.imageUrl) return 'done'
       if (imageErrors[moment.id]) return 'error'
       return 'pending'
     },
-    [generatingImageIds, imageErrors]
+    [generatingImageIds, generatingVideoIds, imageErrors]
   )
 
   const jointStatus = useCallback(
@@ -458,7 +476,7 @@ export default function Home() {
     if (!submitted.ok) return { ok: false, error: submitted.error }
     if (submitted.status === 'cached') return { ok: true, result: submitted.result }
 
-    const polled = await awaitRenderJob(submitted.jobId)
+    const polled = await watcherRef.current!.watch(submitted.jobId)
     if (!polled.ok) return { ok: false, error: polled.error }
     if (polled.status !== 'done') {
       return { ok: false, error: 'The render did not finish. Please try again.' }
@@ -536,27 +554,79 @@ export default function Home() {
     if (animatingAll) return // guard against a duplicate batch run
     const ids = projectRef.current.moments.filter(eligibleForAnimation).map((m) => m.id)
     if (ids.length === 0) return
-    cancelAnimateAllRef.current = false
-    setAnimatingAll(true)
 
-    // Shared cursor: workers pull the next id, so a slow clip never blocks the others.
-    // Single-threaded JS makes the increment safe without a lock.
-    let cursor = 0
-    const width = isHosted() ? Math.min(ANIMATE_CONCURRENCY, ids.length) : 1
-
-    async function worker() {
-      for (;;) {
-        if (cancelAnimateAllRef.current) return
-        const id = ids[cursor++]
-        if (id === undefined) return
+    if (!isHosted()) {
+      // Demo mode: no database to hold the batch, so it stays a plain sequential loop.
+      cancelAnimateAllRef.current = false
+      setAnimatingAll(true)
+      for (const id of ids) {
+        if (cancelAnimateAllRef.current) break
         const moment = projectRef.current.moments.find((m) => m.id === id)
         if (!moment || !eligibleForAnimation(moment)) continue
         await handleAnimate(moment)
       }
+      setAnimatingAll(false)
+      return
+    }
+
+    // Record the whole batch as pending jobs BEFORE charging for any of it. This is what
+    // survives a closed tab: the intent is in Postgres, not in this loop.
+    const batch = await startAnimateBatch(ids, persistContextRef.current.rowId)
+    if (!batch.ok) {
+      setVideoErrors((prev) => ({ ...prev, [ids[0]]: batch.error }))
+      return
+    }
+    await drainPendingJobs(batch.jobs)
+  }
+
+  // Promote pending jobs a few at a time and wait for their clips. Shared cursor: workers
+  // pull the next job, so a slow clip never blocks the others. Single-threaded JS makes the
+  // increment safe without a lock.
+  async function drainPendingJobs(jobs: { jobId: string; targetId: string }[]) {
+    cancelAnimateAllRef.current = false
+    pendingJobIdsRef.current = jobs.map((j) => j.jobId)
+    setAnimatingAll(true)
+
+    let cursor = 0
+    const width = Math.min(ANIMATE_CONCURRENCY, jobs.length)
+
+    async function worker() {
+      for (;;) {
+        if (cancelAnimateAllRef.current) return
+        const job = jobs[cursor++]
+        if (job === undefined) return
+
+        const moment = projectRef.current.moments.find((m) => m.id === job.targetId)
+        if (!moment || !eligibleForAnimation(moment)) continue
+
+        pendingJobIdsRef.current = pendingJobIdsRef.current.filter((id) => id !== job.jobId)
+        setGeneratingVideoIds((prev) => new Set(prev).add(moment.id))
+        setVideoErrors((prev) => ({ ...prev, [moment.id]: '' }))
+
+        const submitted = await submitPendingClipJob(job.jobId, moment)
+        const result = await resolveJob(submitted)
+        if (result.ok) {
+          applyJobResult('clip', moment.id, result.result)
+        } else {
+          setVideoErrors((prev) => ({ ...prev, [moment.id]: result.error }))
+        }
+        clearGeneratingFor('clip', moment.id)
+      }
     }
 
     await Promise.all(Array.from({ length: width }, () => worker()))
+    pendingJobIdsRef.current = []
     setAnimatingAll(false)
+  }
+
+  // Cancel stops SCHEDULING. Jobs never submitted are abandoned server-side (nothing was
+  // charged, so nothing is refunded); jobs already at fal are paid, running work and are left
+  // to finish and land.
+  function cancelAnimateAll() {
+    cancelAnimateAllRef.current = true
+    const unsubmitted = pendingJobIdsRef.current
+    pendingJobIdsRef.current = []
+    if (unsubmitted.length > 0) void abandonPendingJobs(unsubmitted)
   }
 
   // Dual-keyframe path: end still (FLUX, cached) + Kling O3 start→end. Same per-moment
@@ -1002,8 +1072,13 @@ export default function Home() {
   const animatableCount = project.moments.filter((m) => m.imageUrl && !m.videoUrl).length
   const animatedCount = project.moments.filter((m) => m.videoUrl).length
   const failedAnimationCount = project.moments.filter((m) => m.imageUrl && !m.videoUrl && videoErrors[m.id]).length
-  const animatingId = [...generatingVideoIds][0]
-  const animatingNumber = animatingId ? project.moments.find((m) => m.id === animatingId)?.number : undefined
+  // Which moments are animating, in storyboard order. Previously this showed only
+  // `[...generatingVideoIds][0]`, whose value jumps as Set membership changes — with three
+  // clips in flight the number flickered instead of reporting anything.
+  const animatingNumbers = project.moments
+    .filter((m) => generatingVideoIds.has(m.id))
+    .map((m) => m.number)
+  const queuedToAnimate = Math.max(animatableCount - animatingNumbers.length, 0)
 
   return (
     <MotionConfig transition={reduceMotion ? { duration: 0.2 } : { duration: 0.5, ease: [0.4, 0, 0.2, 1] }}>
@@ -1295,13 +1370,14 @@ export default function Home() {
                   {animatingAll ? (
                     <>
                       <span className="text-[12px] text-[var(--text-tertiary)]">
-                        Animating{animatingNumber ? ` moment ${animatingNumber}` : ''}… ({animatableCount} left)
+                        {animatingNumbers.length > 0
+                          ? `Rendering moment${animatingNumbers.length > 1 ? 's' : ''} ${animatingNumbers.join(', ')}`
+                          : 'Starting…'}
+                        {queuedToAnimate > 0 ? ` · ${queuedToAnimate} queued` : ''} · {animatedCount} done
                       </span>
                       <button
                         type="button"
-                        onClick={() => {
-                          cancelAnimateAllRef.current = true
-                        }}
+                        onClick={cancelAnimateAll}
                         className="text-[12px] text-[var(--muted-foreground)] transition-colors hover:text-foreground"
                       >
                         Cancel

@@ -4,7 +4,10 @@
 import { motion } from 'motion/react'
 import type { ConnectionMode, Moment, Transition } from '@/types'
 
-export type SlotStatus = 'pending' | 'rendering' | 'done' | 'error'
+// 'animating' = the still is done and its clip is being generated. Distinct from 'rendering'
+// (which is the still itself) because during an Animate All the thumbnails all look finished
+// and nothing showed which ones were actually working.
+export type SlotStatus = 'pending' | 'rendering' | 'animating' | 'done' | 'error'
 export type JointStatus = 'dormant' | 'armed' | 'generating' | 'done' | 'error'
 export type ReviewSelection = { kind: 'moment'; id: string } | { kind: 'joint'; fromId: string }
 
@@ -52,7 +55,7 @@ export function ReviewStrip({
                 selected ? 'ring-1 ring-foreground' : 'ring-0'
               }`}
             >
-              {status === 'done' && moment.imageUrl ? (
+              {(status === 'done' || status === 'animating') && moment.imageUrl ? (
                 <img src={moment.imageUrl} alt="" className="absolute inset-0 h-full w-full object-cover" />
               ) : status === 'error' ? (
                 <span className="absolute inset-0 flex items-center justify-center text-sm text-destructive">↻</span>
@@ -61,6 +64,17 @@ export function ReviewStrip({
                   className={`absolute inset-0 bg-white/5 ${status === 'rendering' ? 'animate-pulse' : ''}`}
                 />
               )}
+              {/* Animating keeps the frame visible and marks it working — a dimmed overlay
+                  plus a badge, so "which of these is actually rendering" is answerable at a
+                  glance across the whole strip. */}
+              {status === 'animating' ? (
+                <>
+                  <span className="absolute inset-0 animate-pulse bg-black/45" />
+                  <span className="absolute inset-x-0 bottom-0 bg-black/70 py-0.5 text-center text-[9px] leading-3 text-white">
+                    animating
+                  </span>
+                </>
+              ) : null}
               <span className="absolute top-1 left-1 rounded-full bg-black/60 px-1.5 text-[10px] leading-4 text-white">
                 {moment.number}
               </span>

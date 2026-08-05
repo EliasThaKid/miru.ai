@@ -1,40 +1,114 @@
-import { pollRenderJobStatus, type PollJobResult } from '@/app/actions/render-jobs'
+import { pollRenderJobs, type PollJobResult } from '@/app/actions/render-jobs'
 
-// Client-side driver for an async render job. Kling runs for minutes, so this polls slowly
-// and backs off: the point is to notice completion within a few seconds, not to watch.
+// One poller for every in-flight job, not one per job.
 //
-// Deliberately NOT abortable. A submitted job is paid work that fal is already running, so
-// "stop watching" would only lose the result — cancelling a batch stops SCHEDULING new jobs
-// and lets in-flight ones land (see runAnimateAll).
+// Each Server Action call re-renders the page tree, so N independent pollers meant a
+// re-render every second or so and visibly unstable UI. A single ticking loop asks about all
+// open jobs at once, so the interface updates in one coherent step per tick.
+//
+// `watch()` returns a promise per job, which keeps calling code written as a plain await
+// while the transport underneath is shared.
+//
+// Deliberately not abortable: a submitted job is paid work fal is already running, so
+// "stop watching" could only lose the result.
 
 const FIRST_DELAY_MS = 4000
-const MAX_DELAY_MS = 10000
-// The server terminates a stale job at 30 minutes (JOB_STALE_AFTER_MS). This is only a
-// backstop so a client can never spin forever if that check is somehow not reached.
+const MAX_DELAY_MS = 12000
+// The server terminates a stale job at 30 minutes; this is only a backstop so a client can
+// never spin forever.
 const CLIENT_GIVE_UP_MS = 35 * 60 * 1000
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-export async function awaitRenderJob(
-  jobId: string,
-  onPending?: (queuePosition: number | null) => void
-): Promise<PollJobResult> {
-  const startedAt = Date.now()
-  let delay = FIRST_DELAY_MS
+interface Watched {
+  startedAt: number
+  resolve: (result: PollJobResult) => void
+}
 
-  for (;;) {
-    await sleep(delay)
-    delay = Math.min(Math.round(delay * 1.3), MAX_DELAY_MS)
+export class JobWatcher {
+  private watched = new Map<string, Watched>()
+  private running = false
+  // Bumped whenever a job settles, so the UI can re-read `activeIds` without polling state.
+  private listeners = new Set<() => void>()
 
-    const result = await pollRenderJobStatus(jobId)
-    if (!result.ok || result.status === 'done') return result
+  get activeIds(): string[] {
+    return [...this.watched.keys()]
+  }
 
-    onPending?.(result.queuePosition)
+  onChange(listener: () => void): () => void {
+    this.listeners.add(listener)
+    return () => this.listeners.delete(listener)
+  }
 
-    if (Date.now() - startedAt > CLIENT_GIVE_UP_MS) {
-      return { ok: false, error: 'The render is taking unusually long. Check back shortly — it may still land.' }
+  watch(jobId: string): Promise<PollJobResult> {
+    const existing = this.watched.get(jobId)
+    if (existing) {
+      // Already watched (a second tab, or a resume racing a live handler) — share the wait.
+      return new Promise((resolve) => {
+        const previous = existing.resolve
+        existing.resolve = (result) => {
+          previous(result)
+          resolve(result)
+        }
+      })
     }
+
+    return new Promise((resolve) => {
+      this.watched.set(jobId, { startedAt: Date.now(), resolve })
+      this.notify()
+      if (!this.running) void this.loop()
+    })
+  }
+
+  private async loop(): Promise<void> {
+    this.running = true
+    let delay = FIRST_DELAY_MS
+
+    while (this.watched.size > 0) {
+      await sleep(delay)
+      delay = Math.min(Math.round(delay * 1.25), MAX_DELAY_MS)
+
+      const ids = [...this.watched.keys()]
+      let results: Record<string, PollJobResult>
+      try {
+        results = await pollRenderJobs(ids)
+      } catch {
+        continue // transient; the next tick asks again rather than failing a live job
+      }
+
+      for (const jobId of ids) {
+        const result = results[jobId]
+        if (!result) continue
+
+        if (!result.ok || result.status === 'done') {
+          this.settle(jobId, result)
+          continue
+        }
+        // Backstop only — the server's own stale check is the real timeout.
+        const started = this.watched.get(jobId)?.startedAt ?? 0
+        if (Date.now() - started > CLIENT_GIVE_UP_MS) {
+          this.settle(jobId, {
+            ok: false,
+            error: 'The render is taking unusually long. Check back shortly — it may still land.',
+          })
+        }
+      }
+    }
+
+    this.running = false
+  }
+
+  private settle(jobId: string, result: PollJobResult): void {
+    const entry = this.watched.get(jobId)
+    if (!entry) return
+    this.watched.delete(jobId)
+    entry.resolve(result)
+    this.notify()
+  }
+
+  private notify(): void {
+    for (const listener of this.listeners) listener()
   }
 }

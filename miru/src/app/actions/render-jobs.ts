@@ -12,6 +12,9 @@ import {
 import { beginGeneration, refundSpend, tokenCost } from '@/lib/metering'
 import { buildImagePrompt, buildTransitionPrompt, buildVideoPrompt } from '@/lib/prompts'
 import {
+  attachRequest,
+  cancelPendingJobs,
+  claimPendingJob,
   createRenderJob,
   finishRenderJob,
   isJobStale,
@@ -278,6 +281,104 @@ async function persistJob(
 }
 
 // ---------------------------------------------------------------------------------------
+// Batches — durable intent
+//
+// An Animate All records a 'pending' row per moment BEFORE anything is charged, so the list
+// of work survives a closed tab. The scheduler then promotes them a few at a time; tokens
+// are spent only at promotion. Without this the queue lived in the browser and a reload lost
+// every clip that hadn't been submitted yet.
+// ---------------------------------------------------------------------------------------
+
+export interface PendingJobRef {
+  jobId: string
+  targetId: string
+}
+
+export async function startAnimateBatch(
+  momentIds: string[],
+  projectId: string | null
+): Promise<{ ok: true; jobs: PendingJobRef[] } | { ok: false; error: string }> {
+  const user = await requireUser()
+  if (!user) return { ok: false, error: NEEDS_HOSTING }
+
+  const jobs: PendingJobRef[] = []
+  for (const momentId of momentIds) {
+    const created = await createRenderJob({
+      userId: user.id,
+      projectId,
+      kind: 'clip',
+      targetId: momentId,
+      endpoint: FAL_ENDPOINTS.klingImageToVideo,
+      status: 'pending',
+      tokensSpent: 0,
+      spendRef: momentId,
+      prompt: null,
+    })
+    if (created) jobs.push({ jobId: created.id, targetId: momentId })
+  }
+
+  if (jobs.length === 0) return { ok: false, error: 'Could not start the batch. Please try again.' }
+  return { ok: true, jobs }
+}
+
+// Promote one pending job: claim it, spend, submit. The claim is what stops two tabs from
+// paying for the same clip twice.
+export async function submitPendingClipJob(
+  jobId: string,
+  moment: Moment
+): Promise<SubmitJobResult> {
+  const user = await requireUser()
+  if (!user) return { ok: false, error: NEEDS_HOSTING }
+
+  const job = await loadRenderJob(jobId, user.id)
+  if (!job) return { ok: false, error: 'That render job could not be found.' }
+  // The client supplies the moment, so the server must confirm it is the one this job is for.
+  if (job.target_id !== moment.id) return { ok: false, error: 'That render job does not match this moment.' }
+  if (job.status !== 'pending') return { ok: false, error: 'That render job has already started.' }
+  if (!moment.imageUrl) return { ok: false, error: 'Render the frame first — animation starts from it.' }
+
+  if (!(await claimPendingJob(jobId))) {
+    return { ok: false, error: 'That render job has already started.' }
+  }
+
+  const amount = tokenCost.clip()
+  const meter = await beginGeneration(amount, 'spend:clip', moment.id)
+  if (!meter.ok) {
+    // Put it back so a top-up can resume the batch rather than losing the intent.
+    await finishRenderJob(jobId, { status: 'cancelled', error: meter.error })
+    return { ok: false, error: meter.error }
+  }
+
+  try {
+    const clipSeconds = moment.durationSeconds >= 8 ? 10 : 5
+    const videoPrompt = buildVideoPrompt(
+      moment.shotType,
+      moment.motion ?? moment.description,
+      clipSeconds
+    )
+    const requestId = await submitAnimateMoment(
+      moment.imageUrl,
+      videoPrompt,
+      clipSeconds === 10 ? '10' : '5'
+    )
+    await attachRequest(jobId, requestId, amount, videoPrompt, { videoModel: 'kling-1.6' })
+    return { ok: true, status: 'queued', jobId }
+  } catch (err) {
+    await meter.refund()
+    await finishRenderJob(jobId, { status: 'failed', error: 'Could not queue the animation.' })
+    return { ok: false, error: errorText(err, 'Could not queue the animation. Please try again.') }
+  }
+}
+
+// Cancel = drop unsubmitted intent. Submitted jobs are untouched on purpose: they are paid,
+// running work, so they finish and land rather than being thrown away.
+export async function abandonPendingJobs(jobIds: string[]): Promise<void> {
+  const user = await requireUser()
+  if (!user) return
+  await cancelPendingJobs(user.id, jobIds)
+}
+
+// ---------------------------------------------------------------------------------------
 // Poll
 // ---------------------------------------------------------------------------------------
 
@@ -289,9 +390,11 @@ export async function pollRenderJobStatus(jobId: string): Promise<PollJobResult>
   if (!job) return { ok: false, error: 'That render job could not be found.' }
 
   if (job.status === 'succeeded') return doneResult(job)
-  if (job.status === 'failed') {
-    return { ok: false, error: job.error ?? 'The render failed. Please try again.' }
+  if (job.status === 'failed' || job.status === 'cancelled') {
+    return { ok: false, error: job.error ?? 'The render did not complete.' }
   }
+  // Claimed but not yet submitted (or still pending): nothing to ask fal about.
+  if (!job.request_id) return { ok: true, status: 'pending', queuePosition: null }
 
   const state = await pollVideoJob(job.endpoint, job.request_id)
 
@@ -372,6 +475,8 @@ export interface OpenJobSummary {
   kind: RenderJobKind
   targetId: string
   createdAt: string
+  // 'pending' means never submitted — the client must promote it, not poll it.
+  submitted: boolean
 }
 
 export async function listOpenJobs(): Promise<OpenJobSummary[]> {
@@ -383,7 +488,21 @@ export async function listOpenJobs(): Promise<OpenJobSummary[]> {
     kind: job.kind,
     targetId: job.target_id,
     createdAt: job.created_at,
+    submitted: job.status !== 'pending',
   }))
+}
+
+// Multiplexed poll: one round trip for every in-flight job instead of one per job. Each
+// Server Action call re-renders the page tree, so N independent pollers made the UI churn
+// several times a second; this ticks once and lands all updates together.
+export async function pollRenderJobs(
+  jobIds: string[]
+): Promise<Record<string, PollJobResult>> {
+  const out: Record<string, PollJobResult> = {}
+  for (const jobId of jobIds) {
+    out[jobId] = await pollRenderJobStatus(jobId)
+  }
+  return out
 }
 
 function errorText(err: unknown, fallback: string): string {
