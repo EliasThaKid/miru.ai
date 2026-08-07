@@ -1,6 +1,7 @@
 'use server'
 
 import { breakdownMoments } from '@/lib/anthropic'
+import { requireGenerationAccess } from '@/lib/metering'
 import type { Character, Moment, Setting } from '@/types'
 
 export type GenerateMomentsResult = { ok: true; moments: Moment[] } | { ok: false; error: string }
@@ -10,6 +11,10 @@ export async function generateMoments(
   cast: Character[] = [],
   settings: Setting[] = []
 ): Promise<GenerateMomentsResult> {
+  // Costs the owner an Anthropic call even though it costs the user no tokens.
+  const access = await requireGenerationAccess()
+  if (!access.ok) return { ok: false, error: access.error }
+
   try {
     const { moments } = await breakdownMoments(script, cast, settings)
 

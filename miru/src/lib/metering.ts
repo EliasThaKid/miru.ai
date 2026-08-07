@@ -25,6 +25,46 @@ export type BeginResult =
   | { ok: true; refund: () => Promise<void> }
   | { ok: false; error: string }
 
+export type AccessResult = { ok: true } | { ok: false; error: string }
+
+// Gate for AI calls that cost the OWNER money but carry no token price — the Claude-backed
+// actions (script breakdown, context extraction, description refinement).
+//
+// These were unmetered and ungated, which was invisible while the app was private and a
+// standing invitation once it was public: anyone could burn the owner's Anthropic key with no
+// account, and the token ceiling could not see it because these calls never reach
+// `spend_tokens`. `extractContext` is the sharpest case — it fires automatically on paste.
+//
+//  - Supabase unconfigured (local $0 demo) → allowed, unchanged.
+//  - Configured but signed out              → refused.
+//  - Suspended account                      → refused (mirrors the check inside spend_tokens,
+//                                             which these calls never pass through).
+export async function requireGenerationAccess(): Promise<AccessResult> {
+  if (!isSupabaseConfigured()) return { ok: true }
+
+  const supabase = await createClient()
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+  if (!user) {
+    return { ok: false, error: 'Sign in to use the AI features — it takes a moment and is free to start.' }
+  }
+
+  const { data } = await supabase
+    .from('account_status')
+    .select('suspended_at')
+    .eq('user_id', user.id)
+    .maybeSingle()
+  if (data?.suspended_at) {
+    return {
+      ok: false,
+      error: 'This account is suspended. Contact support if you believe this is a mistake.',
+    }
+  }
+
+  return { ok: true }
+}
+
 // Reserve tokens BEFORE a paid generation. Call this only after an action's free
 // early-returns (cached asset, validation), so nothing is charged for a no-op.
 //

@@ -1,6 +1,7 @@
 'use server'
 
 import { refineCharacter, refineSetting } from '@/lib/anthropic'
+import { requireGenerationAccess } from '@/lib/metering'
 
 export type RefineCharacterResult =
   | { ok: true; refined: string; notes: string[] }
@@ -13,6 +14,9 @@ export async function refineCharacterDescription(
   if (!script.trim() && !description.trim()) {
     return { ok: false, error: 'Add a script or a character description first.' }
   }
+
+  const access = await requireGenerationAccess()
+  if (!access.ok) return { ok: false, error: access.error }
 
   try {
     const result = await refineCharacter(script, description)
@@ -32,6 +36,9 @@ export async function refineSettingDescription(
   if (!script.trim() && !description.trim()) {
     return { ok: false, error: 'Add a script or a location description first.' }
   }
+
+  const access = await requireGenerationAccess()
+  if (!access.ok) return { ok: false, error: access.error }
 
   try {
     const result = await refineSetting(script, description)

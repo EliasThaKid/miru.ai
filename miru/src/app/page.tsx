@@ -51,12 +51,16 @@ export default function LandingPage() {
               href="/studio"
               className="rounded-md border border-white/15 px-5 py-2.5 text-[14px] text-foreground transition-colors hover:border-white/30"
             >
-              Try the demo
+              Look around first
             </Link>
           </div>
 
+          {/* Say what the account actually buys. The previous copy promised a pre-generated
+              demo that does not exist yet; claiming it while the editor opens empty is worse
+              than saying nothing. Restore a "try it free" line once the demo project ships. */}
           <p className="text-[12px] text-[var(--text-tertiary)]">
-            The demo runs on pre-generated assets — no account, no cost.
+            Browse the editor without an account. Generating needs one — new accounts start
+            with free tokens.
           </p>
         </div>
 
