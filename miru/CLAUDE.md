@@ -10,7 +10,11 @@ Script-to-storyboard and animatic generator for short-form content creators.
 Portfolio project for Stew (Type.ai) — will be read in interviews. Prioritize
 clean, readable code over cleverness.
 
-Next.js 14+ App Router · Tailwind CSS · shadcn/ui · TypeScript · Anthropic API · FAL.ai · Vercel
+Next.js 16 App Router · Tailwind CSS · shadcn/ui · TypeScript · Anthropic API · FAL.ai ·
+Supabase (Auth + Postgres + Storage) · Stripe · Vercel
+
+**Live at https://scenelab.urbnchld.com.** It is a real hosted product with real accounts and
+real spend, not a demo any more. Assume changes reach users.
 
 **Terminology (rebranded 2026-07-17):** a `Project` is one continuous *scene*; Claude breaks
 the script into 8-12 **moments** — its distinct visual beats. Older docs/plans under
@@ -19,8 +23,9 @@ the script into 8-12 **moments** — its distinct visual beats. Older docs/plans
 **Current state:** verified live end to end against the real APIs: script → moment breakdown
 (Claude) → per-moment image (FLUX) → per-moment animation (Kling 1.6) → per-adjacent-pair
 *connections* (Hard Cut by default; opt-in Generated Bridge via Kling O3 dual-keyframe).
-`lib/storage.ts` persists the active `Project` to localStorage (key `scenelab:project:v3`;
-`Moment` gained optional `scriptSpan`, backward compatible).
+Persistence is now **session-dependent** (see "Hosted platform"): `lib/project-store.ts`
+routes signed-in users to a Postgres row and everyone else to `lib/storage.ts` /
+localStorage (key `scenelab:project:v3`).
 
 **UI architecture (2026-07-18 two-mode redesign — approved Superdesign "Hero & Strip"):**
 the app is a **state machine**, not a growing page: `composing → listing → transitioning
@@ -46,9 +51,12 @@ never race a newer one — do not replace it with a boolean.
 The inspector also owns per-moment editing: DESCRIPTION (editable; note that once
 `imagePrompt` is stored, the prompt — not the description — drives renders) and ◀ ▶
 reordering in the SHOT block (renumbers; selection follows the moved moment). The
-animatic opens via the rail into the review canvas. Note: `maxDuration = 300` lives in `page.tsx`, not any
-action file — a `'use server'` module may only export async functions; page-level placement
-is the documented Next.js mechanism for extending Server Action timeouts. Design docs live in
+animatic opens via the rail into the review canvas. Note: `maxDuration = 60` lives in
+`page.tsx`, not any action file — a `'use server'` module may only export async functions;
+page-level placement is the documented Next.js mechanism for extending Server Action
+timeouts. 60 is the Vercel Hobby ceiling, and it is *sufficient* only because hosted renders
+go through the job queue instead of blocking; do not reintroduce a blocking Kling call
+without raising it (Pro only). Design docs live in
 `docs/superpowers/{specs,plans}/`. A related sandbox repo, `personalprojects/scenelab-api-test`,
 has the smoke-test scripts every FAL call and the breakdown prompt were validated against
 (FLUX, Kling 1.6, Kling O3, and the 2026-07-17 moments-prompt revision).
@@ -103,16 +111,76 @@ deliberate design decision.
   helper is fair game in the next cleanup pass. `page.tsx` has also grown large enough
   that splitting the editor/generation handlers into a hook is worth considering then.
 
+## Hosted platform (Phases 1–6, shipped)
+
+Operational runbook — env vars, migrations, deploy steps, go-live checklist — is
+`HOSTING.md`. This section is the architecture and the invariants.
+
+**Money invariants. Treat these as load-bearing; breaking one costs real money.**
+- The **server is the only authority on balances**. Costs come from `TOKENS_PER_*` env vars,
+  never from the client. Never accept an amount, a price, or a user id from a request body.
+- **Nothing that CREDITS tokens is reachable with a user JWT.** `refund_spend` and
+  `apply_purchase` are service-role only. `spend_tokens` is user-callable on purpose —
+  calling it directly can only drain your own balance and cannot trigger a paid fal call.
+  (`0004_refund_hardening.sql` exists because the original `refund_tokens` grant let any
+  signed-in user mint unlimited tokens.)
+- **Deduct before generate, refund on failure.** `beginGeneration()` in `lib/metering.ts`
+  wraps every paid action; a cached asset or a validation failure must return *before* it, so
+  no-ops are free. `refund_spend` refuses to exceed the net spend recorded against that ref.
+- Per-user daily cap + global daily ceiling are enforced **atomically inside** `spend_tokens`.
+  The global ceiling is the kill-switch against a scraper — keep it set in production.
+
+**Assets (Phase 4).** fal CDN URLs expire, so every paid output is mirrored into a private
+per-user Storage bucket. The durable reference is the **object path**
+(`imageStoragePath` / `endImageStoragePath` / `videoStoragePath`), never a URL: both provider
+and signed URLs expire. `refreshAssetUrls()` re-mints 7-day signed URLs on every project load.
+Mirroring is **best-effort** — a Storage failure keeps the provider URL rather than losing a
+paid generation.
+
+**Render jobs (Phase 5).** Signed-in clip/anchored/bridge generation **submits to fal's queue**
+and polls; it does not block. Job rows in `render_jobs` are what survive a closed tab.
+- `pending` = intended, not yet sent to fal, **nothing charged**. `queued`/`running` = paid.
+  A `request_id` is the proof of submission — classify by that, not by the status string.
+- Tokens are spent at promotion, not at batch creation, so an abandoned batch is cheap.
+- **Cancel stops scheduling only.** Submitted clips are paid, running work: they finish and
+  land, and are **not refunded**. The UI says so before and during a batch. Never add a
+  cancel-refund path.
+- Animate All runs up to `ANIMATE_CONCURRENCY` (3) clips at once. **Stills stay strictly
+  sequential** — the FLUX rate rule is unchanged.
+- One `JobWatcher` multiplexes all polling. Do not go back to one poller per job: every poll
+  is a Server Action and every Server Action re-renders the tree.
+- Job state is service-role only. A user who could mark their own job failed would collect a
+  refund for work that succeeded.
+
+**Payments (Phase 6).** Stripe-hosted Checkout; card details never touch the app. The pack
+catalogue lives server-side in `lib/stripe.ts` and the browser sends only a **pack id**. The
+webhook (`/app/api/stripe/webhook/route.ts`) is public, so nothing is believed until
+`constructEvent` verifies the signature — read the body **raw**, keep the Node runtime, and
+only credit `payment_status === 'paid'`. `apply_purchase` is idempotent on the session id.
+A credit failure returns **500 on purpose** so Stripe retries; an unattributable paid session
+returns 200 and is logged loudly for manual crediting.
+
+**Migrations** are ordered and cumulative in `supabase/migrations/`: `0001` schema + ledger,
+`0002` caps/kill-switch, `0003` Storage bucket + policies, `0004` refund hardening (security),
+`0005` render jobs, `0006` pending jobs, `0007` welcome grant. Add new ones; never edit an
+applied file.
+
 ## Commands
 
 - `npm run dev` — start dev server
 - `npm run build` — production build (run before every commit that touches Server Actions)
 - `npm run lint` — ESLint check
+- `npx vitest run` — unit tests (prompt composition, image validation)
 - `npx shadcn@latest add <component>` — add a new shadcn component (never hand-roll one that shadcn already provides)
 
 ## Architecture — do not relitigate
 
-- No database. No auth. Persistence is localStorage only.
+- **Two modes, one codebase.** Signed out — or Supabase env vars absent — is the original
+  `$0` localStorage demo, unchanged and still the thing that must never break. Signed in is
+  the hosted product. Every hosted feature degrades gracefully when its env vars are missing;
+  never make the demo path depend on Supabase, Stripe, or the job queue.
+- Persistence routes through `lib/project-store.ts` (DB row when signed in, localStorage
+  otherwise). Don't call `lib/storage.ts` directly from new code.
 - All AI calls (Claude + FAL.ai) go through Server Actions in `/app/actions/`. Never call
   Anthropic or FAL.ai directly from a client component.
 - PDF export (jsPDF) and image zip (JSZip) are pure client-side — no server involvement.
@@ -124,9 +192,16 @@ deliberate design decision.
 ## File structure conventions
 
 - `/app/actions/` — Server Actions only (`generate-moments`, `generate-image`,
-  `generate-moment-video`, `generate-bridge`)
+  `generate-moment-video`, `generate-bridge`, `render-jobs`, `checkout`)
+- `/app/api/` — Route Handlers for server-to-server callers only (the Stripe webhook).
+  Anything the app's own UI calls belongs in `/app/actions/`.
 - `/components/` — all React components (`moment-card.tsx`). Never put components directly in `/app`.
-- `/lib/` — API clients and helpers (`lib/anthropic.ts`, `lib/fal.ts`, `lib/prompts.ts`)
+- `/lib/` — API clients and helpers (`lib/anthropic.ts`, `lib/fal.ts`, `lib/prompts.ts`,
+  `lib/metering.ts`, `lib/asset-store.ts`, `lib/render-jobs.ts`, `lib/stripe.ts`)
+- `/lib/supabase/` — `client` (browser, anon key), `server` (user JWT, RLS applies),
+  `admin` (**service role, bypasses RLS — server-only, never import from a component**),
+  `proxy` (session refresh)
+- `/supabase/migrations/` — ordered SQL. Never edit an applied migration; add a new one.
 - `/types/index.ts` — all shared types (`Moment`, `Project`, `Transition`, `ConnectionMode`,
   `ShotType`, `StylePreset`)
 - `/public/demo/` — pre-cached demo project assets
@@ -289,14 +364,26 @@ interface Project {
 - `/public/demo/` — pre-cached demo project (images, videoUrls, and transition videoUrls).
   This is what makes the Stew demo run at $0 cost with zero live API calls. Do not
   regenerate, overwrite, or "clean up" these assets without explicit confirmation.
-- `.env.local` — never read, print, log, or commit contents. Keys: `ANTHROPIC_API_KEY`, `FAL_KEY`.
+- `.env.local` and `.env.vercel` — never read, print, log, or commit contents. They now hold
+  far more than two keys: `SUPABASE_SERVICE_ROLE_KEY` bypasses RLS and `STRIPE_SECRET_KEY`
+  moves money. If a value is needed, transform the file in place with a shell command rather
+  than printing it. (Listing variable *names* is fine and is the usual diagnostic.)
+- Applied migrations (`0001`–`0007`). They have run against the live database; changing one
+  desynchronizes it from production. Add a new migration instead.
 
 ## Scope discipline
 
-This repo has a locked MVP scope (see project brief). If a task requests something outside
-Screens 1–5 as specced (script input → processing → storyboard editor → animatic preview →
-export), flag it as a scope expansion and confirm before building it. Do not add auth,
-a database, social publishing, or full-project (non-per-moment, non-adjacent-pair) video
-generation. Generated Bridges are in scope as specced above — opt-in, adjacent moment pairs
-only. Do not extend them to auto-chain an entire project or generate bridges for
-non-adjacent moments without explicit confirmation.
+The creative scope is still Screens 1–5 (script input → processing → storyboard editor →
+animatic preview → export). If a task requests something outside that, flag it as a scope
+expansion and confirm before building it.
+
+Auth, the database, the token economy, and payments **are built** — see "Hosted platform".
+That is no longer a scope expansion; it is the product. Still out of scope: social
+publishing, and full-project (non-per-moment, non-adjacent-pair) video generation.
+Generated Bridges remain opt-in, adjacent moment pairs only. Do not extend them to
+auto-chain an entire project or generate bridges for non-adjacent moments without explicit
+confirmation.
+
+**Because it is live:** anything touching money, auth, or generation reaches real users on
+real spend. Verify with `npm run build`, `npm run lint`, and `npx vitest run` before
+committing, and prefer a new migration over editing an applied one.
