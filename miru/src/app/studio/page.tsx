@@ -141,8 +141,37 @@ export default function Home() {
   // ref so the debounced save always reads the latest context without re-subscribing.
   const persistContextRef = useRef<PersistContext>(ANON_CONTEXT)
 
+  // Demo mode (`/studio?demo=1`): open the pre-generated project from public/demo instead of
+  // the visitor's own, and never persist it. Read from window rather than useSearchParams so
+  // this page stays statically prerendered and needs no Suspense boundary.
+  const demoRef = useRef(false)
+
   useEffect(() => {
     let active = true
+
+    if (new URLSearchParams(window.location.search).get('demo') === '1') {
+      demoRef.current = true
+      fetch('/demo/project.json')
+        .then((res) => (res.ok ? res.json() : null))
+        .then((demo: Project | null) => {
+          if (!active || !demo) {
+            // No demo shipped (or it failed to load) — fall through to the normal path rather
+            // than leaving the editor stuck on a spinner.
+            if (active) setHasLoaded(true)
+            return
+          }
+          setProject(demo)
+          if (demo.moments.length > 0) {
+            setMode('reviewing')
+            setSelection({ kind: 'moment', id: demo.moments[0].id })
+          }
+          setHasLoaded(true)
+        })
+      return () => {
+        active = false
+      }
+    }
+
     loadActiveProject().then(({ project: existing, context }) => {
       if (!active) return
       persistContextRef.current = context
@@ -326,6 +355,9 @@ export default function Home() {
   // assigns a rowId, so subsequent saves update in place.
   useEffect(() => {
     if (!hasLoaded) return
+    // The demo is a read-only exhibit. Persisting it would overwrite a visitor's own draft in
+    // localStorage — or, for a signed-in user, insert the demo as one of their scenes.
+    if (demoRef.current) return
     const handle = setTimeout(() => {
       saveActiveProject(project, persistContextRef.current).then((context) => {
         persistContextRef.current = context

@@ -1,0 +1,788 @@
+{
+  "id": "demo",
+  "title": "Demo scene",
+  "script": "A small coffee shop near the university, worn soft by years. Late-autumn light comes gold through a tall window beaded with rain. Hard rock murmurs from a speaker in the corner. The place has never been much — but it keeps its two constants: loud guitars and bad coffee.\n\nAt the corner table she always takes, a young woman sits reading, elbows planted on the wood. Wire-rimmed glasses — the kind that look a little like orthodontia — slip down her nose; her thin hands hold a dog-eared paperback. Her coffee has long gone cold, and the ashtray at her elbow is brimming.\n\nA young man comes in from the rain and shakes the water from his coat. He knows the room, and he knows the table. He crosses to her and takes the chair across from her.\n\nShe looks up and gives a small, unhurried smile. Without a word she slides a paperback across the table toward him; he slides another one back. The everyday trade.\n\nThey fall into talk. The light slides from gold to bronze along the tabletop, and the rain thickens on the glass, blurring the street into soft smears of warm light.\n\nShe sets her book face-down, rests her chin on her thin hands, and watches him talk. He watches the rain. Neither of them says the thing. The afternoon just holds them there — two students, one worn table, a stack of paperbacks between them, and the last warm hour before the cold sets in.",
+  "characters": [
+    {
+      "id": "c8a930ed-c24f-47c4-b2f0-9acb87343059",
+      "name": "The young woman",
+      "description": "Early-20s woman, slight and thin-handed, wire-rimmed glasses sitting low on her nose, unspecified dark casual clothing, elbows-on-table posture, pale complexion, muted warm-neutral palette"
+    },
+    {
+      "id": "057cb88b-bc63-4739-ac32-98c5d5829b1a",
+      "name": "The young man",
+      "description": "Early-20s man, damp from rain, wearing a wet coat in dark or neutral tones, relaxed familiar bearing, no strongly distinguishing features specified, cool muted palette"
+    }
+  ],
+  "stylePreset": "cinematic",
+  "moments": [
+    {
+      "id": "05450912-95a9-4ad7-aa4d-b38fcc2ffe33",
+      "number": 1,
+      "shotType": "wide",
+      "description": "A small, worn coffee shop interior in late-autumn afternoon light: a tall rain-beaded window floods the room in cold gold, catching dust motes and scarred tabletops. The space is intimate and unhurried — stacked paperbacks, a corner speaker, the faint suggestion of cigarette smoke. ",
+      "durationSeconds": 5,
+      "scriptSpan": {
+        "start": 0,
+        "end": 272
+      },
+      "visualFocus": "multiple_characters",
+      "blocking": {
+        "actionPhase": "pre_action",
+        "focalAction": "Empty worn café bathed in late-autumn gold light through a rain-beaded window",
+        "subjects": [],
+        "objectPhysics": [],
+        "avoid": [
+          "symmetrical establishing shot",
+          "brightly lit commercial café look",
+          "busy background movement"
+        ],
+        "settingCategory": "small worn university café in late afternoon autumn",
+        "practicalLighting": "diffuse cold-gold light filtering through a tall rain-beaded window, no artificial fill",
+        "environmentAnchors": [
+          "tall rain-beaded window",
+          "scarred wooden tables",
+          "stacked paperbacks on a shelf"
+        ]
+      },
+      "characterNames": [
+        "The young woman",
+        "The young man"
+      ],
+      "startFrame": "The coffee shop interior seen from just inside the entrance: tall rain-streaked window dominates the far wall, pale gold light raking across empty scarred tables and stacked paperbacks on a shelf; the young woman is a small dark shape seated alone at the corner table, barely distinguishable from the ambient dimness",
+      "motion": "The camera drifts slowly forward at a low angle, settling the room's proportions as the rain light shifts imperceptibly across the wooden surfaces",
+      "endFrame": "The camera has crept closer, the young woman's corner table now occupying the right third of the frame, the window's gold light bisecting the room diagonally; she remains small and still within it",
+      "locationName": "University coffee shop",
+      "endImageUrl": null,
+      "imageUrl": "/demo/moment-01.jpg",
+      "imagePrompt": "The coffee shop interior seen from just inside the entrance: tall rain-streaked window dominates the far wall, pale gold light raking across empty scarred tables and stacked paperbacks on a shelf. an object-detail insert, no person in frame. wide insert shot, the object shown within its surroundings. SETTING LOCK — small worn university café in late afternoon autumn, clearly showing tall rain-beaded window, scarred wooden tables, stacked paperbacks on a shelf, lit by diffuse cold-gold light filtering through a tall rain-beaded window, no artificial fill. vertical 9:16 portrait",
+      "videoUrl": "/demo/moment-01.mp4",
+      "videoPrompt": "Begin exactly from the supplied first frame. The action moves forward from this pose, never backward: The camera drifts slowly forward at a low angle, settling the room's proportions as the rain light shifts imperceptibly across the wooden surfaces slow cinematic push-in, subtle environmental movement in the background, gentle camera drift. Cinematic, smooth, 5 seconds.",
+      "imageGeneratedAt": "2026-07-30T03:16:29.319Z",
+      "videoGeneratedAt": "2026-07-30T03:19:14.630Z",
+      "userPromptOverrideStale": false,
+      "userPromptOverride": null,
+      "videoModel": "kling-1.6"
+    },
+    {
+      "id": "82b9d2bb-39a5-4cad-814e-7f1371523999",
+      "number": 2,
+      "shotType": "medium",
+      "description": "The young woman at her corner table, elbows planted on the scarred wood, a dog-eared paperback open between her thin hands. Her wire-rimmed glasses have slid low on her nose; she is absorbed, the brimming ashtray at her elbow and a cold cup of coffee just visible in the foreground. The gold window light crosses the table behind her.",
+      "durationSeconds": 4,
+      "scriptSpan": {
+        "start": 272,
+        "end": 455
+      },
+      "visualFocus": "mixed",
+      "blocking": {
+        "actionPhase": "pre_action",
+        "focalAction": "Young woman absorbed in reading, elbows on wood, glasses slipping down her nose",
+        "subjects": [
+          {
+            "name": "The young woman",
+            "visibility": "full",
+            "depth": "foreground",
+            "screenRegion": "center",
+            "bodyOrientation": "three_quarter_left",
+            "gazeTarget": "the open paperback",
+            "pose": "elbows on the table, both hands holding the book open, shoulders slightly hunched forward",
+            "occludedBy": null,
+            "skin": "pale complexion",
+            "hair": "unspecified, loosely framing the face",
+            "wardrobe": "dark casual top, no strong detail visible at this distance"
+          }
+        ],
+        "objectPhysics": [
+          {
+            "item": "dog-eared paperback",
+            "gravityState": "held flat open between both hands on the table surface",
+            "deformation": "cover bent back, pages splayed open at the spine",
+            "containment": null,
+            "occlusion": null,
+            "symmetry": "natural"
+          },
+          {
+            "item": "brimming ashtray",
+            "gravityState": "resting on the table at her left elbow",
+            "deformation": null,
+            "containment": null,
+            "occlusion": null,
+            "symmetry": "avoid"
+          },
+          {
+            "item": "cold coffee cup",
+            "gravityState": "resting on the table in the near foreground",
+            "deformation": null,
+            "containment": null,
+            "occlusion": null,
+            "symmetry": "avoid"
+          }
+        ],
+        "avoid": [
+          "posed portrait",
+          "symmetrical framing",
+          "flat catalog shot of the subject"
+        ],
+        "settingCategory": "small worn university café in late afternoon autumn",
+        "practicalLighting": "cold-gold window light falling across the tabletop from the left, no other source",
+        "environmentAnchors": [
+          "scarred wooden tabletop",
+          "brimming ashtray",
+          "rain-beaded window behind her"
+        ]
+      },
+      "characterNames": [],
+      "startFrame": "The young woman seated at the corner table, seen from slightly above table height at a three-quarter angle: elbows on the wood, both hands holding a dog-eared paperback open, wire-rimmed glasses low on her nose, eyes downcast toward the pages; a brimming ashtray rests at her left elbow and a cold coffee cup sits in the near foreground, the rain-gold window filling the background",
+      "motion": "The camera holds completely still; the young woman turns a page with one thin hand, the only movement in the frame",
+      "endFrame": "The young woman in the same position, the turned page now settled flat; her glasses remain low, her gaze still on the book, the ashtray and cold cup unchanged in the foreground",
+      "locationName": "University coffee shop",
+      "endImageUrl": null,
+      "imageUrl": "/demo/moment-02.jpg",
+      "imagePrompt": "The young woman seated at the corner table, seen from slightly above table height at a three-quarter angle: elbows on the wood, wire-rimmed glasses low on her nose, eyes downcast toward the pages; a brimming ashtray rests at her left elbow and a cold coffee cup sits in the near foreground, the rain-gold window filling the background. Dog-eared paperback, cover bent back, pages splayed open at the spine, no person in frame. SETTING LOCK — small worn university café in late afternoon autumn, clearly showing scarred wooden tabletop, brimming ashtray, rain-beaded window behind her, lit by cold-gold window light falling across the tabletop from the left, no other source. vertical 9:16 portrait",
+      "videoUrl": "/demo/moment-02.mp4",
+      "videoPrompt": "Begin exactly from the supplied first frame. The action moves forward from this pose, never backward: The camera holds completely still; the young woman turns a page with one thin hand, the only movement in the frame gentle handheld movement, subject breathing, natural micro-motion. Cinematic, smooth, 5 seconds.",
+      "imageGeneratedAt": "2026-07-30T03:14:39.278Z",
+      "videoGeneratedAt": "2026-07-30T03:21:53.935Z",
+      "videoModel": "kling-1.6"
+    },
+    {
+      "id": "8d67bf5f-b376-4217-ad93-cce55b1f7d0d",
+      "number": 3,
+      "shotType": "close-up",
+      "description": "A close insert on the young woman's thin hands and the dog-eared paperback: pale fingers with faint creases, the book's worn spine and thumbed page edges catching the gold window light. The brimming ashtray is a soft blur at the frame's left edge. The detail is quiet and specific — hands that have read this way many times before.",
+      "durationSeconds": 3,
+      "scriptSpan": {
+        "start": 455,
+        "end": 572
+      },
+      "visualFocus": "object",
+      "blocking": {
+        "actionPhase": "pre_action",
+        "focalAction": "Thin pale hands holding a worn paperback open on the scarred table",
+        "subjects": [],
+        "objectPhysics": [
+          {
+            "item": "dog-eared paperback",
+            "gravityState": "resting open on the table surface, held lightly from above by both hands",
+            "deformation": "spine bent back from repeated reading, page corners dog-eared and softened",
+            "containment": null,
+            "occlusion": null,
+            "symmetry": "natural"
+          },
+          {
+            "item": "brimming ashtray",
+            "gravityState": "resting on the table, partially out of frame at left",
+            "deformation": null,
+            "containment": null,
+            "occlusion": null,
+            "symmetry": "avoid"
+          }
+        ],
+        "avoid": [
+          "product-display flatlay",
+          "symmetrical overhead shot",
+          "overly styled arrangement"
+        ],
+        "settingCategory": "small worn university café in late afternoon autumn",
+        "practicalLighting": "raking window gold light from the left, falling directly across the tabletop and the open pages",
+        "environmentAnchors": [
+          "scarred wooden tabletop",
+          "brimming ashtray at left edge",
+          "warm page surface catching gold light"
+        ]
+      },
+      "characterNames": [],
+      "startFrame": "Extreme close on the tabletop: the young woman's thin pale hands hold a dog-eared paperback open, the book's thumbed pages and creased spine filling the center of frame, warm window gold raking across the paper surface; the brimming ashtray is a soft dark blur at the far left edge",
+      "motion": "The camera holds still; one hand moves slightly, a finger trailing along the bottom of a page",
+      "endFrame": "The hands and open book remain centered, the trailing finger resting at the page's base; everything else unchanged",
+      "locationName": "University coffee shop",
+      "endImageUrl": null,
+      "imageUrl": "/demo/moment-03.jpg",
+      "imagePrompt": "the book's thumbed pages and creased spine filling the center of frame, warm window gold raking across the paper surface; the brimming ashtray is a soft dark blur at the far left edge. Dog-eared paperback, spine bent back from repeated reading, page corners dog-eared and softened, no person in frame. tight insert detail shot on the object, framed off-center, no person in frame. SETTING LOCK — small worn university café in late afternoon autumn, clearly showing scarred wooden tabletop, brimming ashtray at left edge, warm page surface catching gold light, lit by raking window gold light from the left, falling directly across the tabletop and the open pages. vertical 9:16 portrait",
+      "videoUrl": "/demo/moment-03.mp4",
+      "videoPrompt": "Begin exactly from the supplied first frame. The action moves forward from this pose, never backward: The camera holds still; one hand moves slightly, a finger trailing along the bottom of a page subtle facial micro-expression, natural blinking and breathing, minimal camera movement, shallow focus holds steady. Cinematic, smooth, 5 seconds.",
+      "imageGeneratedAt": "2026-07-30T03:11:04.805Z",
+      "videoGeneratedAt": "2026-07-30T03:24:02.628Z",
+      "videoModel": "kling-1.6"
+    },
+    {
+      "id": "b4fcf563-3048-42c4-98bf-e30de9c7aa1f",
+      "number": 4,
+      "shotType": "medium",
+      "description": "The young man enters through the café door, damp coat dark with rain, shaking water from his shoulders with an easy familiar motion. The doorway frames him briefly in grey exterior light before he steps fully into the warm gold interior. His bearing is relaxed — a person entering a room he knows well.",
+      "durationSeconds": 4,
+      "scriptSpan": {
+        "start": 572,
+        "end": 643
+      },
+      "visualFocus": "object",
+      "blocking": {
+        "actionPhase": "action_ready",
+        "focalAction": "Young man just inside the door, shaking rain from his wet coat",
+        "subjects": [
+          {
+            "name": "The young man",
+            "visibility": "full",
+            "depth": "foreground",
+            "screenRegion": "center",
+            "bodyOrientation": "toward_camera",
+            "gazeTarget": "the far corner of the room",
+            "pose": "arms slightly extended mid-shake, legs apart, weight balanced",
+            "occludedBy": null,
+            "skin": "unspecified, cool muted tone",
+            "hair": "damp and slightly disheveled from rain",
+            "wardrobe": "dark wet coat, neutral tones, water visibly beading on the fabric"
+          }
+        ],
+        "objectPhysics": [
+          {
+            "item": "wet coat",
+            "gravityState": "worn on his body, hanging from his shoulders",
+            "deformation": "fabric darkened and heavy with water, water droplets visible on the shoulders and chest",
+            "containment": null,
+            "occlusion": null,
+            "symmetry": "natural"
+          }
+        ],
+        "avoid": [
+          "hero entrance pose",
+          "symmetrical door-frame shot",
+          "overly dramatic backlit silhouette"
+        ],
+        "settingCategory": "small worn university café in late afternoon autumn",
+        "practicalLighting": "brief backlit grey rain light from the closing door, then warm interior diffuse gold as it shuts",
+        "environmentAnchors": [
+          "café entrance doorway",
+          "wet coat dark with rain",
+          "warm interior light contrasting with grey exterior"
+        ]
+      },
+      "characterNames": [],
+      "startFrame": "The young man stands just inside the café entrance, framed by the doorway behind him: the door is still swinging closed, grey rain-light visible through it; his dark coat is visibly wet, water beading on the shoulders, and he stands with both arms slightly extended as he begins to shake the water off",
+      "motion": "He shakes his coat with a loose, practiced motion — water scattering — then drops his arms and turns his gaze into the café interior; the door settles shut behind him, cutting off the grey exterior light",
+      "endFrame": "The young man stands fully inside the café, coat still damp, arms now relaxed at his sides, his gaze directed toward the far corner of the room where the young woman's table sits; the closed door behind him, warm interior light replacing the grey",
+      "locationName": "University coffee shop",
+      "endImageUrl": null,
+      "imageUrl": "/demo/moment-04.jpg",
+      "imagePrompt": "The young man stands just inside the café entrance, framed by the doorway behind him: the door is still swinging closed, grey rain-light visible through it; his dark coat is visibly wet, water beading on the shoulders, and he stands with both arms slightly extended as he begins to shake the water off. Wet coat, fabric darkened and heavy with water, water droplets visible on the shoulders and chest, no person in frame. SETTING LOCK — small worn university café in late afternoon autumn, clearly showing café entrance doorway, wet coat dark with rain, warm interior light contrasting with grey exterior, lit by brief backlit grey rain light from the closing door, then warm interior diffuse gold as it shuts. vertical 9:16 portrait",
+      "videoUrl": "/demo/moment-04.mp4",
+      "videoPrompt": "Begin exactly from the supplied first frame. The action moves forward from this pose, never backward: He shakes his coat with a loose, practiced motion — water scattering — then drops his arms and turns his gaze into the café interior; the door settles shut behind him, cutting off the grey exterior light gentle handheld movement, subject breathing, natural micro-motion. Cinematic, smooth, 5 seconds.",
+      "imageGeneratedAt": "2026-07-30T03:14:22.710Z",
+      "videoGeneratedAt": "2026-07-30T03:25:55.829Z",
+      "videoModel": "kling-1.6"
+    },
+    {
+      "id": "34a01e43-38fa-4f32-9db6-f6848b19ba99",
+      "number": 5,
+      "shotType": "over-the-shoulder",
+      "description": "Over the young woman's shoulder — her dark shape and the paperback just visible in the extreme foreground — we watch the young man cross the room toward the corner table. He moves without hesitation through the worn café, the rain window catching his silhouette in pale gold. The shot carries the intimacy of a room known to both of them.",
+      "durationSeconds": 4,
+      "scriptSpan": {
+        "start": 643,
+        "end": 742
+      },
+      "visualFocus": "character",
+      "blocking": {
+        "actionPhase": "mid_action",
+        "focalAction": "Young man crossing the café toward her table with easy familiarity",
+        "subjects": [
+          {
+            "name": "The young woman",
+            "visibility": "shoulder_only",
+            "depth": "extreme_foreground",
+            "screenRegion": "far_left",
+            "bodyOrientation": "back_to_camera",
+            "gazeTarget": "the young man approaching",
+            "pose": "still, elbows on the table, one shoulder visible",
+            "occludedBy": null,
+            "skin": "pale",
+            "hair": "loosely visible at the back",
+            "wardrobe": "dark casual top"
+          },
+          {
+            "name": "The young man",
+            "visibility": "full",
+            "depth": "midground",
+            "screenRegion": "center",
+            "bodyOrientation": "toward_camera",
+            "gazeTarget": "the young woman's table",
+            "pose": "mid-stride, relaxed, arms loose at his sides",
+            "occludedBy": null,
+            "skin": "unspecified cool muted tone",
+            "hair": "damp",
+            "wardrobe": "dark wet coat"
+          }
+        ],
+        "objectPhysics": [
+          {
+            "item": "open paperback",
+            "gravityState": "resting on the table, partially visible at lower-left foreground edge",
+            "deformation": null,
+            "containment": null,
+            "occlusion": null,
+            "symmetry": "avoid"
+          }
+        ],
+        "avoid": [
+          "symmetrical two-shot",
+          "both characters centered equally",
+          "wide tableau with no depth separation"
+        ],
+        "settingCategory": "small worn university café in late afternoon autumn",
+        "practicalLighting": "diffuse cold-gold window light from the right side, casting soft shadow behind him as he approaches",
+        "environmentAnchors": [
+          "scarred wooden floor stretching between entrance and corner table",
+          "rain-beaded window light",
+          "stacked paperbacks on nearby shelf"
+        ]
+      },
+      "characterNames": [
+        "The young man",
+        "The young woman"
+      ],
+      "startFrame": "The young woman's dark shoulder and the edge of her open paperback occupy the bottom-left foreground; the young man stands at the far end of the café floor, caught mid-step in the pale gold window light, looking directly toward her table",
+      "motion": "The young man walks toward the camera — toward her table — growing from midground to near-midground; the young woman's shoulder in the foreground remains completely still",
+      "endFrame": "The young man has arrived and stands just behind the chair across from her, hand resting on its back; the young woman's shoulder and book edge still anchor the lower-left foreground",
+      "locationName": "University coffee shop",
+      "endImageUrl": null,
+      "imageUrl": "/demo/moment-05.jpg",
+      "imagePrompt": "The young woman's dark shoulder and the edge of her open paperback occupy the bottom-left foreground; the young man stands at the far end of the café floor, caught mid-step in the pale gold window light, looking directly toward her table. In the extreme foreground at the far left of the frame, The young woman (pale, loosely visible at the back, dark casual top) is seen from behind, only one shoulder and the back of their head in frame, with their back to the camera, looking toward the young man approaching, still, elbows on the table, one shoulder visible. In the midground at the centre of the frame, The young man (unspecified cool muted tone, damp, dark wet coat) is fully visible, facing the camera, looking toward the young woman's table, mid-stride, relaxed, arms loose at his sides. SETTING LOCK — small worn university café in late afternoon autumn, clearly showing scarred wooden floor stretching between entrance and corner table, rain-beaded window light, stacked paperbacks on nearby shelf, lit by diffuse cold-gold window light from the right side, casting soft shadow behind him as he approaches. vertical 9:16 portrait",
+      "videoUrl": "/demo/moment-05.mp4",
+      "videoPrompt": "Begin exactly from the supplied first frame. The action moves forward from this pose, never backward: The young man walks toward the camera — toward her table — growing from midground to near-midground; the young woman's shoulder in the foreground remains completely still gentle handheld movement, foreground figure stays anchored, subject in the background breathes and shifts naturally. Cinematic, smooth, 5 seconds.",
+      "imageGeneratedAt": "2026-07-30T03:11:13.844Z",
+      "videoGeneratedAt": "2026-07-30T03:27:53.100Z",
+      "videoModel": "kling-1.6"
+    },
+    {
+      "id": "db37f240-a53e-4bc3-89de-3b540887a40d",
+      "number": 6,
+      "shotType": "medium",
+      "description": "Across the table: the young woman looks up from her book, and a small, unhurried smile settles on her face — the smile of someone unsurprised. She slides her paperback across the scarred table toward him; he slides one back. The exchange is wordless and completely practiced. The brimming ashtray and cold coffee sit in the near foreground.",
+      "durationSeconds": 5,
+      "scriptSpan": {
+        "start": 742,
+        "end": 1074
+      },
+      "visualFocus": "multiple_characters",
+      "blocking": {
+        "actionPhase": "mid_action",
+        "focalAction": "Young woman looking up with a small unhurried smile, hand resting on the paperback she is about to slide",
+        "subjects": [
+          {
+            "name": "The young woman",
+            "visibility": "full",
+            "depth": "foreground",
+            "screenRegion": "left",
+            "bodyOrientation": "three_quarter_right",
+            "gazeTarget": "the young man",
+            "pose": "elbows on the table, one hand flat on the paperback cover, small smile on her face, glasses low on her nose",
+            "occludedBy": null,
+            "skin": "pale complexion",
+            "hair": "loosely framing the face",
+            "wardrobe": "dark casual top"
+          },
+          {
+            "name": "The young man",
+            "visibility": "full",
+            "depth": "midground",
+            "screenRegion": "right",
+            "bodyOrientation": "three_quarter_left",
+            "gazeTarget": "the young woman",
+            "pose": "seated, leaning slightly forward, both hands near the paperback on the table in front of him",
+            "occludedBy": null,
+            "skin": "unspecified cool tone",
+            "hair": "damp, slightly disheveled",
+            "wardrobe": "dark coat, still slightly damp at the shoulders"
+          }
+        ],
+        "objectPhysics": [
+          {
+            "item": "young woman's paperback",
+            "gravityState": "flat on the table surface, her hand resting on the cover",
+            "deformation": "well-worn, edges soft",
+            "containment": null,
+            "occlusion": null,
+            "symmetry": "avoid"
+          },
+          {
+            "item": "young man's paperback",
+            "gravityState": "flat on the table surface in front of him",
+            "deformation": "worn spine",
+            "containment": null,
+            "occlusion": null,
+            "symmetry": "avoid"
+          },
+          {
+            "item": "brimming ashtray",
+            "gravityState": "resting at her left elbow, stationary",
+            "deformation": null,
+            "containment": null,
+            "occlusion": null,
+            "symmetry": "avoid"
+          }
+        ],
+        "avoid": [
+          "symmetrical two-shot",
+          "posed couple portrait",
+          "equal frontal framing of both characters"
+        ],
+        "settingCategory": "small worn university café in late afternoon autumn",
+        "practicalLighting": "cold-gold window light from the tall window to the left, falling across the tabletop and the paperbacks",
+        "environmentAnchors": [
+          "scarred wooden tabletop",
+          "brimming ashtray at her elbow",
+          "rain-beaded window providing the main light"
+        ]
+      },
+      "characterNames": [
+        "The young woman",
+        "The young man"
+      ],
+      "startFrame": "The young woman sits across from the young man, both at the corner table: she has just looked up from her book, glasses low, a small smile forming; her paperback lies flat on the table surface between them, her thin hand resting on its cover; he sits opposite, leaning slightly forward, a paperback resting on the table in front of him",
+      "motion": "Her thin hand pushes the paperback across the table toward him; simultaneously he slides his own across toward her; both books travel and come to rest before the other person, the exchange completing in a single fluid motion",
+      "endFrame": "The two paperbacks have traded sides of the table: his book now rests in front of her, hers in front of him; both characters remain seated, she with her small smile still present, he settling back into his chair",
+      "locationName": "University coffee shop",
+      "endImageUrl": null,
+      "imageUrl": "/demo/moment-06.jpg",
+      "imagePrompt": "The young woman sits across from the young man, both at the corner table: she has just looked up from her book, glasses low, a small smile forming; her paperback lies flat on the table surface between them, her thin hand resting on its cover; he sits opposite, leaning slightly forward, a paperback resting on the table in front of him. In the foreground on the left of the frame, The young woman (pale complexion, loosely framing the face, dark casual top) is only partially in frame, turned three-quarters to the right, looking toward the young man, elbows on the table, one hand flat on the paperback cover, small smile on her face, glasses low on her nose. In the midground on the right of the frame, The young man (unspecified cool tone, damp, slightly disheveled, dark coat, still slightly damp at the shoulders) is only partially in frame, turned three-quarters to the left, looking toward the young woman, seated, leaning slightly forward, both hands near the paperback on the table in front of him. SETTING LOCK — small worn university café in late afternoon autumn, clearly showing scarred wooden tabletop, brimming ashtray at her elbow, rain-beaded window providing the main light, lit by cold-gold window light from the tall window to the left, falling across the tabletop and the paperbacks. vertical 9:16 portrait",
+      "videoUrl": "/demo/moment-06.mp4",
+      "videoPrompt": "Begin exactly from the supplied first frame. The action moves forward from this pose, never backward: Her thin hand pushes the paperback across the table toward him; simultaneously he slides his own across toward her; both books travel and come to rest before the other person, the exchange completing in a single fluid motion gentle handheld movement, subject breathing, natural micro-motion. Cinematic, smooth, 5 seconds.",
+      "imageGeneratedAt": "2026-07-30T03:12:34.138Z",
+      "videoGeneratedAt": "2026-07-30T03:29:42.947Z",
+      "videoModel": "kling-1.6"
+    },
+    {
+      "id": "12f4c475-2dc1-4019-b075-8552a485dede",
+      "number": 7,
+      "shotType": "close-up",
+      "description": "A tight shot on the young woman's face as she listens and watches him talk: chin resting on her thin interlaced hands, glasses low, an expression of quiet attention — not quite a smile now, something stiller and more private. The window gold warms one side of her face; the other falls into soft shadow.",
+      "durationSeconds": 5,
+      "scriptSpan": {
+        "start": 1074,
+        "end": 1159
+      },
+      "visualFocus": "object",
+      "blocking": {
+        "actionPhase": "post_action",
+        "focalAction": "Young woman resting her chin on her interlaced hands, watching him talk with still private attention",
+        "subjects": [
+          {
+            "name": "The young woman",
+            "visibility": "partial",
+            "depth": "foreground",
+            "screenRegion": "center",
+            "bodyOrientation": "three_quarter_right",
+            "gazeTarget": "the young man, off-frame right",
+            "pose": "chin resting on the backs of her interlaced thin hands, shoulders low, body relaxed forward",
+            "occludedBy": null,
+            "skin": "pale complexion, left cheek warmed by window gold",
+            "hair": "loosely visible at both sides of the face",
+            "wardrobe": "dark casual top visible at the lower frame edge"
+          }
+        ],
+        "objectPhysics": [],
+        "avoid": [
+          "posed portrait",
+          "symmetrical lighting",
+          "smile-for-camera expression"
+        ],
+        "settingCategory": "small worn university café in late afternoon autumn",
+        "practicalLighting": "late-afternoon gold window light from the left, warming the left side of her face; the right side falls into natural shadow",
+        "environmentAnchors": [
+          "diffuse window light modeling her face",
+          "dark warm background of the café interior",
+          "her interlaced hands at the base of the frame"
+        ]
+      },
+      "characterNames": [],
+      "startFrame": "The young woman's face in close-up: chin resting on the backs of her thin interlaced hands, wire-rimmed glasses low on her nose, eyes directed off-frame right toward the young man; the left side of her face is touched by warm gold window light, the right side in soft shadow; no strong expression — a still, private attentiveness",
+      "motion": "She remains almost entirely still; the only movement is a slow blink and a barely perceptible shift of her gaze as she follows something he says; the light on her face dims imperceptibly as the afternoon gold begins its slow turn toward bronze",
+      "endFrame": "Her face unchanged in pose and position; the window light has shifted almost imperceptibly warmer-bronze on her left cheek; her gaze remains off-frame right, expression still and quietly attentive",
+      "locationName": "University coffee shop",
+      "endImageUrl": null,
+      "imageUrl": "/demo/moment-07.jpg",
+      "imagePrompt": "wire-rimmed glasses low on her nose, eyes directed off-frame right toward the young man; the left side of her face is touched by warm gold window light, the right side in soft shadow; no strong expression — a still, private attentiveness. an object-detail insert, no person in frame. tight insert detail shot on the object, framed off-center, no person in frame. SETTING LOCK — small worn university café in late afternoon autumn, clearly showing diffuse window light modeling her face, dark warm background of the café interior, her interlaced hands at the base of the frame, lit by late-afternoon gold window light from the left, warming the left side of her face; the right side falls into natural shadow. vertical 9:16 portrait",
+      "videoUrl": "/demo/moment-07.mp4",
+      "videoPrompt": "Begin exactly from the supplied first frame. The action moves forward from this pose, never backward: She remains almost entirely still; the only movement is a slow blink and a barely perceptible shift of her gaze as she follows something he says; the light on her face dims imperceptibly as the afternoon gold begins its slow turn toward bronze subtle facial micro-expression, natural blinking and breathing, minimal camera movement, shallow focus holds steady. Cinematic, smooth, 5 seconds.",
+      "imageGeneratedAt": "2026-07-30T03:14:05.283Z",
+      "videoGeneratedAt": "2026-07-30T03:32:01.905Z",
+      "videoModel": "kling-1.6"
+    },
+    {
+      "id": "9604a93a-30fa-4284-8116-c121ee8d7a9b",
+      "number": 8,
+      "shotType": "medium",
+      "description": "A medium shot across the table catching both of them in conversation: she watches him; he has turned slightly toward the window, watching the rain rather than her. The light between them has shifted — the gold is deepening toward bronze across the tabletop. The stack of paperbacks between them sits in this changing light. Something unspoken sits in the middle distance between their gazes.",
+      "durationSeconds": 6,
+      "scriptSpan": {
+        "start": 1159,
+        "end": 1212
+      },
+      "visualFocus": "multiple_characters",
+      "blocking": {
+        "actionPhase": "post_action",
+        "focalAction": "He looks toward the rain-beaded window; she watches him from across the table",
+        "subjects": [
+          {
+            "name": "The young woman",
+            "visibility": "full",
+            "depth": "foreground",
+            "screenRegion": "left",
+            "bodyOrientation": "three_quarter_right",
+            "gazeTarget": "the young man",
+            "pose": "chin on interlaced hands, elbows on the table, still and watchful",
+            "occludedBy": null,
+            "skin": "pale complexion",
+            "hair": "loosely framing face",
+            "wardrobe": "dark casual top"
+          },
+          {
+            "name": "The young man",
+            "visibility": "full",
+            "depth": "midground",
+            "screenRegion": "right",
+            "bodyOrientation": "profile_left",
+            "gazeTarget": "the rain-beaded window",
+            "pose": "seated, body turned toward the window, one arm resting on the table, relaxed",
+            "occludedBy": null,
+            "skin": "unspecified cool tone",
+            "hair": "damp, mostly dried",
+            "wardrobe": "dark coat open at the front"
+          }
+        ],
+        "objectPhysics": [
+          {
+            "item": "stack of paperbacks",
+            "gravityState": "stacked flat on the table surface between the two characters at the center",
+            "deformation": null,
+            "containment": null,
+            "occlusion": null,
+            "symmetry": "natural"
+          },
+          {
+            "item": "brimming ashtray",
+            "gravityState": "resting on the near table edge, stationary",
+            "deformation": null,
+            "containment": null,
+            "occlusion": null,
+            "symmetry": "avoid"
+          }
+        ],
+        "avoid": [
+          "symmetrical two-shot",
+          "both characters looking at each other simultaneously",
+          "flat even lighting across both faces"
+        ],
+        "settingCategory": "small worn university café in late afternoon autumn",
+        "practicalLighting": "deepening bronze-gold window light falling across the tabletop from the left, warmer and lower than before",
+        "environmentAnchors": [
+          "rain-beaded window behind the young man",
+          "stack of paperbacks at the center of the table",
+          "brimming ashtray at the near table edge"
+        ]
+      },
+      "characterNames": [
+        "The young woman",
+        "The young man"
+      ],
+      "startFrame": "Both characters are seated at the corner table: the young woman at left, chin on her hands, watching the young man; he sits at right, body turned slightly away from her toward the rain-beaded window, his gaze on the glass; a small stack of paperbacks occupies the center of the table between them, the light across the tabletop a deep gold beginning to bronze; brimming ashtray at the near edge",
+      "motion": "Neither character moves significantly; the light on the tabletop slides almost imperceptibly from gold to bronze as the afternoon deepens; the rain on the window behind him thickens, blurring the street beyond into soft smears",
+      "endFrame": "Both characters remain in the same positions; the tabletop light is now distinctly more bronze than gold; the window behind the young man shows the street reduced to soft warm smears of light through the heavier rain",
+      "locationName": "University coffee shop",
+      "endImageUrl": null,
+      "imageUrl": "/demo/moment-08.jpg",
+      "imagePrompt": "Both characters are seated at the corner table: the young woman at left, chin on her hands, watching the young man; he sits at right, body turned slightly away from her toward the rain-beaded window, his gaze on the glass; a small stack of paperbacks occupies the center of the table between them, the light across the tabletop a deep gold beginning to bronze; brimming ashtray at the near edge. In the foreground on the left of the frame, The young woman (pale complexion, loosely framing face, dark casual top) is only partially in frame, turned three-quarters to the right, looking toward the young man, chin on interlaced hands, elbows on the table, still and watchful. In the midground on the right of the frame, The young man (unspecified cool tone, damp, mostly dried, dark coat open at the front) is only partially in frame, in left profile, looking toward the rain-beaded window, seated, body turned toward the window, one arm resting on the table, relaxed. SETTING LOCK — small worn university café in late afternoon autumn, clearly showing rain-beaded window behind the young man, stack of paperbacks at the center of the table, brimming ashtray at the near table edge, lit by deepening bronze-gold window light falling across the tabletop from the left, warmer and lower than before. vertical 9:16 portrait",
+      "videoUrl": "/demo/moment-08.mp4",
+      "videoPrompt": "Begin exactly from the supplied first frame. The action moves forward from this pose, never backward: Neither character moves significantly; the light on the tabletop slides almost imperceptibly from gold to bronze as the afternoon deepens; the rain on the window behind him thickens, blurring the street beyond into soft smears gentle handheld movement, subject breathing, natural micro-motion. Cinematic, smooth, 5 seconds.",
+      "imageGeneratedAt": "2026-07-30T03:11:30.383Z",
+      "videoGeneratedAt": "2026-07-30T03:33:58.022Z",
+      "videoModel": "kling-1.6"
+    },
+    {
+      "id": "292b4e41-14e9-4492-97ae-5e9ee546c672",
+      "number": 9,
+      "shotType": "close-up",
+      "description": "A tight insert on the rain-blurred window beside their table: the street beyond has dissolved into soft warm smears of amber and copper light, pedestrians reduced to moving brushstrokes behind the heavy glass. A rivulet of rain traces a slow path down the pane. The outside world is fully softened, held at bay.",
+      "durationSeconds": 4,
+      "scriptSpan": null,
+      "visualFocus": "environment",
+      "blocking": {
+        "actionPhase": "mid_action",
+        "focalAction": "Rain rivulets tracking slowly down the window as the street dissolves into warm smears of light behind the glass",
+        "subjects": [],
+        "objectPhysics": [
+          {
+            "item": "rain rivulet",
+            "gravityState": "tracking slowly downward under gravity along the glass pane surface",
+            "deformation": "elongating as it collects smaller beads, widening at the base",
+            "containment": null,
+            "occlusion": null,
+            "symmetry": "avoid"
+          }
+        ],
+        "avoid": [
+          "centered symmetrical rivulet",
+          "clear sharp view of the street",
+          "overly dramatic storm lighting"
+        ],
+        "settingCategory": "small worn university café in late afternoon autumn",
+        "practicalLighting": "exterior ambient light from blurred streetlights and shopfronts transmitted through the rain-beaded glass, no interior source in this frame",
+        "environmentAnchors": [
+          "rain-beaded window glass",
+          "blurred amber street lights beyond the pane",
+          "worn dark window frame at the edge"
+        ]
+      },
+      "characterNames": [],
+      "startFrame": "The rain-beaded window glass in close-up: heavy rivulets track slowly down the pane, the street beyond dissolved into overlapping smears of warm amber and copper light — headlights and shopfronts reduced to soft impressionistic blobs; the window frame is dark and slightly worn at the edge",
+      "motion": "A single large rivulet of rain traces a slow path down the pane from the top of the frame to the bottom; the blurred lights beyond shift and waver slightly as the rain moves",
+      "endFrame": "The rivulet has reached the bottom of the visible pane; the glass is now more heavily beaded, the street beyond reduced to warmer, softer smears than at the shot's opening",
+      "locationName": "University coffee shop",
+      "endImageUrl": null,
+      "imageUrl": "/demo/moment-09.jpg",
+      "imagePrompt": "The rain-beaded window glass in close-up: heavy rivulets track slowly down the pane, the street beyond dissolved into overlapping smears of warm amber and copper light — headlights and shopfronts reduced to soft impressionistic blobs; the window frame is dark and slightly worn at the edge. an empty location, no people present. close detail of the environment, no people present. SETTING LOCK — small worn university café in late afternoon autumn, clearly showing rain-beaded window glass, blurred amber street lights beyond the pane, worn dark window frame at the edge, lit by exterior ambient light from blurred streetlights and shopfronts transmitted through the rain-beaded glass, no interior source in this frame. vertical 9:16 portrait",
+      "videoUrl": "/demo/moment-09.mp4",
+      "videoPrompt": "Begin exactly from the supplied first frame. The action moves forward from this pose, never backward: A single large rivulet of rain traces a slow path down the pane from the top of the frame to the bottom; the blurred lights beyond shift and waver slightly as the rain moves subtle facial micro-expression, natural blinking and breathing, minimal camera movement, shallow focus holds steady. Cinematic, smooth, 5 seconds.",
+      "imageGeneratedAt": "2026-07-30T03:11:34.205Z",
+      "videoGeneratedAt": "2026-07-30T03:36:40.837Z",
+      "videoModel": "kling-1.6"
+    },
+    {
+      "id": "323a5c5f-8d04-443a-8b45-877177228c47",
+      "number": 10,
+      "shotType": "wide",
+      "description": "A final wide pull back to the full café interior, the two figures small at their corner table in the deepening bronze light. The window behind them is a wash of blurred warm rain-glow. The stack of paperbacks, the cold cup, the brimming ashtray — all visible in the spreading amber dusk. The room holds them quietly, the afternoon not quite over yet.",
+      "durationSeconds": 7,
+      "scriptSpan": {
+        "start": 1212,
+        "end": 1363
+      },
+      "visualFocus": "object",
+      "blocking": {
+        "actionPhase": "post_action",
+        "focalAction": "Two small still figures at a corner table held in the last warm bronze-amber light of a late-autumn afternoon",
+        "subjects": [
+          {
+            "name": "The young woman",
+            "visibility": "full",
+            "depth": "background",
+            "screenRegion": "right",
+            "bodyOrientation": "three_quarter_right",
+            "gazeTarget": "the young man",
+            "pose": "chin on hands, still, small within the room",
+            "occludedBy": null,
+            "skin": "pale, warmed by amber light",
+            "hair": "loosely framing face",
+            "wardrobe": "dark top, mostly absorbed into the background dimness"
+          },
+          {
+            "name": "The young man",
+            "visibility": "full",
+            "depth": "background",
+            "screenRegion": "far_right",
+            "bodyOrientation": "profile_left",
+            "gazeTarget": "the window",
+            "pose": "seated, relaxed, one arm on the table, turned slightly toward the window",
+            "occludedBy": null,
+            "skin": "unspecified cool tone, softened by amber light",
+            "hair": "dry now, natural",
+            "wardrobe": "dark coat, open"
+          }
+        ],
+        "objectPhysics": [
+          {
+            "item": "stack of paperbacks",
+            "gravityState": "stacked on the table center between the two figures",
+            "deformation": null,
+            "containment": null,
+            "occlusion": null,
+            "symmetry": "natural"
+          },
+          {
+            "item": "cold coffee cup",
+            "gravityState": "resting on the table near her elbow",
+            "deformation": null,
+            "containment": null,
+            "occlusion": null,
+            "symmetry": "avoid"
+          },
+          {
+            "item": "brimming ashtray",
+            "gravityState": "resting at the near table edge",
+            "deformation": null,
+            "containment": null,
+            "occlusion": null,
+            "symmetry": "avoid"
+          }
+        ],
+        "avoid": [
+          "dramatic cinematic pull-back with music swell",
+          "both figures in sharp heroic profile",
+          "overly staged symmetrical wide shot"
+        ],
+        "settingCategory": "small worn university café in late afternoon autumn",
+        "practicalLighting": "deep bronze-amber window light as the only warm source, diffusing into the room from the far right; no overhead fill",
+        "environmentAnchors": [
+          "tall window glowing with blurred amber rain-light",
+          "scarred wooden tables and empty chairs in the mid-ground",
+          "corner table with stack of paperbacks between the two figures"
+        ]
+      },
+      "characterNames": [],
+      "startFrame": "The full café interior in wide shot: the two students sit small and still at their corner table in the lower-right of the frame, the bronze-gold window behind them reduced to a warm diffuse blur; the scarred tables, stacked paperbacks, and empty chairs occupy the middle and far left; the light is distinctly bronze now, the last warmth of the afternoon pressing in from the window",
+      "motion": "The camera holds completely still; the light in the frame dims by the faintest degree, the window warm glow the only illumination deepening toward amber; neither character moves",
+      "endFrame": "The two figures remain at their corner table, unchanged in pose, the café fully settled into late-afternoon amber dimness; the window behind them glows softly with blurred rain-light; the room is still",
+      "locationName": "University coffee shop",
+      "endImageUrl": null,
+      "imageUrl": "/demo/moment-10.jpg",
+      "imagePrompt": "The full café interior in wide shot: the two students sit small and still at their corner table in the lower-right of the frame, the bronze-gold window behind them reduced to a warm diffuse blur; the scarred tables, stacked paperbacks, and empty chairs occupy the middle and far left; the light is distinctly bronze now, the last warmth of the afternoon pressing in from the window. Stack of paperbacks, stacked on the table center between the two figures, no person in frame. SETTING LOCK — small worn university café in late afternoon autumn, clearly showing tall window glowing with blurred amber rain-light, scarred wooden tables and empty chairs in the mid-ground, corner table with stack of paperbacks between the two figures, lit by deep bronze-amber window light as the only warm source, diffusing into the room from the far right; no overhead fill. vertical 9:16 portrait",
+      "videoUrl": "/demo/moment-10.mp4",
+      "videoPrompt": "Begin exactly from the supplied first frame. The action moves forward from this pose, never backward: The camera holds completely still; the light in the frame dims by the faintest degree, the window warm glow the only illumination deepening toward amber; neither character moves slow cinematic push-in, subtle environmental movement in the background, gentle camera drift. Cinematic, smooth, 5 seconds.",
+      "imageGeneratedAt": "2026-07-30T03:13:44.116Z",
+      "videoGeneratedAt": "2026-07-30T03:38:36.036Z",
+      "videoModel": "kling-1.6"
+    }
+  ],
+  "transitions": [
+    {
+      "id": "6ccb94a5-9668-42b0-9605-2e2a7e1dc2d2",
+      "fromMomentId": "292b4e41-14e9-4492-97ae-5e9ee546c672",
+      "toMomentId": "323a5c5f-8d04-443a-8b45-877177228c47",
+      "mode": "generated-bridge",
+      "videoUrl": "/demo/bridge-01.mp4",
+      "transitionPrompt": "Begin exactly from the first supplied frame. zoom out to next frame Motion progresses naturally and continuously toward the second supplied frame. Context — first frame: A tight insert on the rain-blurred window beside their table: the street beyond has dissolved into soft warm smears of amber and copper light, pedestrians reduced to moving brushstrokes behind the heavy glass. A rivulet of rain traces a slow path down the pane. The outside world is fully softened, held at bay. Second frame: A final wide pull back to the full café interior, the two figures small at their corner table in the deepening bronze light. The window behind them is a wash of blurred warm rain-glow. The stack of paperbacks, the cold cup, the brimming ashtray — all visible in the spreading amber dusk. The room holds them quietly, the afternoon not quite over yet. Preserve character identity, facial features, clothing, object identity, lighting, environment, and spatial continuity. Use restrained cinematic camera movement. End exactly on the second supplied frame. No morphing, melting, object substitution, teleportation, sudden identity changes, extra limbs, extra subjects, text, or unmotivated scene transformation. 5 seconds.",
+      "bridgeDirection": "zoom out to next frame",
+      "generatedAt": "2026-07-30T03:42:50.187Z"
+    },
+    {
+      "id": "e3b7a3a1-a83b-46ce-abf7-ef9be11f1a4d",
+      "fromMomentId": "82b9d2bb-39a5-4cad-814e-7f1371523999",
+      "toMomentId": "8d67bf5f-b376-4217-ad93-cce55b1f7d0d",
+      "mode": "generated-bridge",
+      "videoUrl": "/demo/bridge-02.mp4",
+      "transitionPrompt": "Begin exactly from the first supplied frame. zoom into book Motion progresses naturally and continuously toward the second supplied frame. Context — first frame: The young woman at her corner table, elbows planted on the scarred wood, a dog-eared paperback open between her thin hands. Her wire-rimmed glasses have slid low on her nose; she is absorbed, the brimming ashtray at her elbow and a cold cup of coffee just visible in the foreground. The gold window light crosses the table behind her. Second frame: A close insert on the young woman's thin hands and the dog-eared paperback: pale fingers with faint creases, the book's worn spine and thumbed page edges catching the gold window light. The brimming ashtray is a soft blur at the frame's left edge. The detail is quiet and specific — hands that have read this way many times before. Preserve character identity, facial features, clothing, object identity, lighting, environment, and spatial continuity. Use restrained cinematic camera movement. End exactly on the second supplied frame. No morphing, melting, object substitution, teleportation, sudden identity changes, extra limbs, extra subjects, text, or unmotivated scene transformation. 5 seconds.",
+      "bridgeDirection": "zoom into book",
+      "generatedAt": "2026-07-30T03:44:10.364Z"
+    },
+    {
+      "id": "303aa84f-f94f-46fc-8e96-5ae89c8bae59",
+      "fromMomentId": "b4fcf563-3048-42c4-98bf-e30de9c7aa1f",
+      "toMomentId": "34a01e43-38fa-4f32-9db6-f6848b19ba99",
+      "mode": "fade-to-black",
+      "videoUrl": null,
+      "transitionPrompt": null,
+      "bridgeDirection": null,
+      "generatedAt": null
+    }
+  ],
+  "createdAt": "2026-07-17T20:06:23.695Z",
+  "updatedAt": "2026-07-30T16:37:10.982Z",
+  "settings": [
+    {
+      "id": "6d412171-e718-42cc-a0a6-33b6af833c21",
+      "name": "University coffee shop",
+      "description": "Small worn café in late autumn, late afternoon; tall rain-beaded window casting gold-to-bronze light across scarred wooden tables; brimming ashtray, stacked paperbacks, corner speaker, atmosphere of quiet long use"
+    }
+  ]
+}

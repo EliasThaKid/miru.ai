@@ -40,3 +40,6 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 .superdesign
+
+# Exported localStorage project used to build public/demo (see scripts/build-demo.mjs)
+demo-source.json
