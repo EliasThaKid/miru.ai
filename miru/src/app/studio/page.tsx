@@ -145,12 +145,16 @@ export default function Home() {
   // the visitor's own, and never persist it. Read from window rather than useSearchParams so
   // this page stays statically prerendered and needs no Suspense boundary.
   const demoRef = useRef(false)
+  // Mirrored into state because the render needs it: a ref changing does not re-render, and
+  // the read-only treatment has to be applied on the first paint, not after an edit.
+  const [demoMode, setDemoMode] = useState(false)
 
   useEffect(() => {
     let active = true
 
     if (new URLSearchParams(window.location.search).get('demo') === '1') {
       demoRef.current = true
+      setDemoMode(true)
       fetch('/demo/project.json')
         .then((res) => (res.ok ? res.json() : null))
         .then((demo: Project | null) => {
@@ -209,6 +213,10 @@ export default function Home() {
     const opened = await openScene(rowId)
     if (!opened) return
 
+    // Leaving the demo for a real scene must also leave demo mode, or the editor would stay
+    // read-only and — worse — silently stop saving their work.
+    demoRef.current = false
+    setDemoMode(false)
     persistContextRef.current = { ...persistContextRef.current, rowId }
     setProject(opened)
     setImageErrors({})
@@ -225,6 +233,8 @@ export default function Home() {
   // Start a fresh scene. rowId goes null so the next save INSERTS instead of overwriting the
   // scene that was open.
   function handleNewScene() {
+    demoRef.current = false
+    setDemoMode(false)
     persistContextRef.current = { ...persistContextRef.current, rowId: null }
     setProject({
       ...EMPTY_PROJECT,
@@ -1185,13 +1195,33 @@ export default function Home() {
           generating={anyGenerating}
         />
 
+        {/* Without this, locked controls just look broken. Fixed rather than in flow so it
+            can't disturb either the compose column or the review layout. */}
+        {demoMode ? (
+          <div className="pointer-events-none fixed inset-x-0 top-0 z-50 flex justify-center px-4 py-3">
+            <div className="pointer-events-auto flex items-center gap-3 rounded-full border border-white/15 bg-black/80 px-4 py-1.5 text-[12px] text-[var(--muted-foreground)] backdrop-blur">
+              <span>Demo — a finished scene, read-only. Play it, browse the shots, export it.</span>
+              <a href="/sign-up" className="text-foreground underline underline-offset-2">
+                Make your own
+              </a>
+            </div>
+          </div>
+        ) : null}
+
         <main className="min-w-0 flex-1">
           <AnimatePresence initial={false} mode="wait">
             {mode !== 'reviewing' ? (
               <motion.div
                 key="compose"
                 exit={{ opacity: 0 }}
-                className="mx-auto flex w-full max-w-[640px] flex-col gap-10 px-6 py-16"
+                // `inert` disables the whole subtree in one place — every input, textarea, and
+                // button inside becomes unfocusable, unclickable, and hidden from assistive
+                // tech. Cheaper and far harder to get wrong than threading a `readOnly` prop
+                // through every control, and it cannot be missed when a new control is added.
+                inert={demoMode}
+                className={`mx-auto flex w-full max-w-[640px] flex-col gap-10 px-6 py-16 ${
+                  demoMode ? 'opacity-60' : ''
+                }`}
               >
                 <div className="flex flex-col gap-1.5">
                   <Label htmlFor="script" className="text-[11px] tracking-[0.18em] text-[var(--text-tertiary)]">
@@ -1567,7 +1597,15 @@ export default function Home() {
                     so a long Description/Motion/Prompt never clips the Generation section and
                     never overlaps the thumbnail rail. Hidden while the animatic is playing. */}
                 {!showAnimatic ? (
-                  <div className="h-svh min-h-0 shrink-0 overflow-y-auto overflow-x-hidden border-l border-white/10 px-5 py-6">
+                  // Inert in demo mode: the inspector is where every edit and every paid
+                  // generate button lives. Selecting moments in the strip still works, so the
+                  // panel keeps showing each shot's details — just not changing them.
+                  <div
+                    inert={demoMode}
+                    className={`h-svh min-h-0 shrink-0 overflow-y-auto overflow-x-hidden border-l border-white/10 px-5 py-6 ${
+                      demoMode ? 'opacity-60' : ''
+                    }`}
+                  >
                     <Inspector
                       selection={selection}
                       project={project}
