@@ -142,6 +142,26 @@ export function AuthForm({ mode }: { mode: Mode }) {
           </Button>
         </form>
 
+        {/* Consent shown at the point of account creation, where it means something — not
+            buried in a footer. */}
+        {isSignUp ? (
+          <p className="mt-4 text-center text-[12px] leading-[1.6] text-[var(--text-tertiary)]">
+            By creating an account you agree to the{' '}
+            <Link href="/legal/terms" className="underline underline-offset-2 hover:text-foreground">
+              Terms
+            </Link>
+            ,{' '}
+            <Link href="/legal/acceptable-use" className="underline underline-offset-2 hover:text-foreground">
+              Acceptable Use Policy
+            </Link>
+            , and{' '}
+            <Link href="/legal/privacy" className="underline underline-offset-2 hover:text-foreground">
+              Privacy Policy
+            </Link>
+            .
+          </p>
+        ) : null}
+
         {error ? <p className="mt-4 text-[13px] text-destructive">{error}</p> : null}
         {notice ? <p className="mt-4 text-[13px] text-foreground">{notice}</p> : null}
 
@@ -166,6 +186,18 @@ export function AuthForm({ mode }: { mode: Mode }) {
         <p className="mt-8 text-center text-[12px] text-[var(--text-tertiary)]">
           <Link href="/" className="hover:text-foreground">
             ← Continue without an account (demo)
+          </Link>
+        </p>
+
+        <p className="mt-4 flex justify-center gap-3 text-[11px] text-[var(--text-tertiary)]">
+          <Link href="/legal/terms" className="hover:text-foreground">
+            Terms
+          </Link>
+          <Link href="/legal/privacy" className="hover:text-foreground">
+            Privacy
+          </Link>
+          <Link href="/legal/refunds" className="hover:text-foreground">
+            Refunds
           </Link>
         </p>
       </div>

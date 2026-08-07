@@ -115,6 +115,8 @@ function friendlySpendError(message: string, amount: number): string {
     return "You've reached today's generation limit. It resets at midnight UTC."
   if (message.includes('GLOBAL_CEILING_EXCEEDED'))
     return 'Generation is paused for today — the system-wide daily limit was reached. Please try again tomorrow.'
+  if (message.includes('ACCOUNT_SUSPENDED'))
+    return 'This account is suspended and cannot generate. Contact support if you believe this is a mistake.'
   if (message.includes('NOT_AUTHENTICATED')) return 'Sign in to generate.'
   return 'Could not reserve tokens for this generation. Please try again.'
 }

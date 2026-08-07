@@ -143,10 +143,20 @@ may raise it, but nothing currently needs more.
 ## Go-live checklist (do NOT flip to live Stripe keys until all true)
 
 - [ ] **Legal/tax:** a real entity or individual on Stripe with tax info; Stripe Tax configured.
-- [ ] **Policies published:** Terms of Service, Privacy Policy, and a Refund policy.
+      **Yours — cannot be done in code.**
+- [x] **Policies published:** `/legal/terms`, `/legal/privacy`, `/legal/acceptable-use`,
+      `/legal/refunds`. Linked from the auth pages, with consent shown at account creation.
+      ⚠️ **Drafted, not lawyer-reviewed.** They describe this system accurately (what is
+      stored, which processors receive what, how refunds actually behave), which is more than
+      a template does — but before real money, have them reviewed, and replace
+      `support@urbnchld.com` if that is not a monitored address.
 - [ ] **Unit economics verified:** measured fal per-call cost; token price clears cost + fees.
-- [ ] **Content moderation:** a stated policy + the ability to ban a user; you accept that
-      users generate on your fal/Anthropic keys and you're responsible under their ToS.
+      Pack prices in `lib/stripe.ts` are still placeholders.
+- [x] **Content moderation:** policy at `/legal/acceptable-use`, enforced by
+      `0008_account_suspension.sql` — a row in `account_status` blocks generation atomically
+      inside `spend_tokens`, so a suspended account cannot spend by any path. Suspend/reinstate
+      SQL is in the migration header. You still accept that users generate on your
+      fal/Anthropic keys and you are responsible under their ToS.
 - [ ] **Budget ceiling set** (`GLOBAL_DAILY_TOKEN_CEILING`) and alerting on approach.
 - [ ] **Webhook verified** end-to-end in test mode (a test purchase credits exactly once).
 - [ ] Swap `sk_test_*` / `pk_test_*` → `sk_live_*` / `pk_live_*` and re-point the webhook.
