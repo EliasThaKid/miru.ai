@@ -28,7 +28,7 @@ export default function LegalLayout({ children }: { children: React.ReactNode })
         <Link href="/legal/refunds" className="transition-colors hover:text-foreground">
           Refunds
         </Link>
-        <Link href="/" className="ml-auto transition-colors hover:text-foreground">
+        <Link href="/studio" className="ml-auto transition-colors hover:text-foreground">
           Back to app
         </Link>
       </footer>

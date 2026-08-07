@@ -29,7 +29,7 @@ localStorage (key `scenelab:project:v3`).
 
 **UI architecture (2026-07-18 two-mode redesign — approved Superdesign "Hero & Strip"):**
 the app is a **state machine**, not a growing page: `composing → listing → transitioning
-→ reviewing` in `page.tsx`. COMPOSE: narrow column (script, cast rows with per-row
+→ reviewing` in `app/studio/page.tsx`. COMPOSE: narrow column (script, cast rows with per-row
 Refine ✦, style), "Generate Storyboard" is the single filled primary action, with the
 cost estimate folded in. `listing` never leaves compose (inline pending + Cancel; failure
 lands inline). Generate is a **mode change**: on wave 1 (Claude breakdown) resolving, the
@@ -52,7 +52,7 @@ The inspector also owns per-moment editing: DESCRIPTION (editable; note that onc
 `imagePrompt` is stored, the prompt — not the description — drives renders) and ◀ ▶
 reordering in the SHOT block (renumbers; selection follows the moved moment). The
 animatic opens via the rail into the review canvas. Note: `maxDuration = 60` lives in
-`page.tsx`, not any action file — a `'use server'` module may only export async functions;
+`app/studio/page.tsx`, not any action file — a `'use server'` module may only export async functions;
 page-level placement is the documented Next.js mechanism for extending Server Action
 timeouts. 60 is the Vercel Hobby ceiling, and it is *sufficient* only because hosted renders
 go through the job queue instead of blocking; do not reintroduce a blocking Kling call
@@ -106,10 +106,27 @@ init analysis and `design-system.md`. Do not reintroduce a light default without
 deliberate design decision.
 
 **Known deferred cleanups (all Minor):**
-- `handleGenerateImage`/`handleAnimateMoment`/`handleGenerateBridge` in `page.tsx` share a
+- `handleGenerateImage`/`handleAnimateMoment`/`handleGenerateBridge` in `app/studio/page.tsx` share a
   structural pattern — three instances now exist, so extracting a shared per-item async
-  helper is fair game in the next cleanup pass. `page.tsx` has also grown large enough
+  helper is fair game in the next cleanup pass. `app/studio/page.tsx` has also grown large enough
   that splitting the editor/generation handlers into a hook is worth considering then.
+
+## Routes
+
+- `/` — marketing landing (static, no Supabase). `components/landing-hero.tsx` holds the
+  background video slot: set `HERO_VIDEO_SRC` once `public/hero.mp4` exists; until then it
+  renders a graded placeholder rather than a broken `<video>`.
+- `/studio` — the app. Post-auth redirects and the "continue without an account" link all
+  point here; `/` is not the app any more.
+- `/sign-in`, `/sign-up`, `/auth/callback`, `/auth/signout` — auth.
+- `/legal/*` — Terms, Privacy, Acceptable Use, Refunds. Consent is shown at sign-up.
+
+**Scene library.** `projects` has always been one row per scene; the rail
+(`components/scene-library.tsx` + `lib/project-library.ts`) lists, opens, and deletes them.
+Switching scenes must repoint `persistContextRef.current.rowId` **before** the new project
+state lands, or the first autosave overwrites the scene you just left. "New" sets `rowId` to
+null so the next save inserts. Deleting a scene deliberately does **not** delete its Storage
+objects — they are paid assets and the button has no undo.
 
 ## Hosted platform (Phases 1–6, shipped)
 

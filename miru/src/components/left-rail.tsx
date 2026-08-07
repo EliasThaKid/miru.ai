@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from 'motion/react'
 import { exportImagesZip, exportStoryboardPdf } from '@/lib/export'
 import { exportSequenceVideo } from '@/lib/export-video'
 import { AuthButton } from '@/components/auth-button'
+import { SceneLibrary } from '@/components/scene-library'
 import type { Project } from '@/types'
 
 interface LeftRailProps {
@@ -15,12 +16,28 @@ interface LeftRailProps {
   onShowAnimatic: () => void
   onEnterReview: () => void
   onBackToCompose: () => void
+  // Scene library (signed-in only; the rail renders nothing for the anonymous demo).
+  activeRowId: string | null
+  onOpenScene: (rowId: string) => void
+  onNewScene: () => void
+  generating: boolean
 }
 
 const ENTRY = 'flex w-full items-center gap-2 py-1.5 text-left text-[13px] text-[var(--muted-foreground)] transition-colors hover:text-foreground disabled:pointer-events-none disabled:opacity-40'
 const SECTION_LABEL = 'text-[11px] tracking-[0.18em] text-[var(--text-tertiary)]'
 
-export function LeftRail({ project, mode, hasFrames, onShowAnimatic, onEnterReview, onBackToCompose }: LeftRailProps) {
+export function LeftRail({
+  project,
+  mode,
+  hasFrames,
+  onShowAnimatic,
+  onEnterReview,
+  onBackToCompose,
+  activeRowId,
+  onOpenScene,
+  onNewScene,
+  generating,
+}: LeftRailProps) {
   const [busy, setBusy] = useState<'pdf' | 'zip' | 'video' | null>(null)
   const [videoPct, setVideoPct] = useState(0)
   const [error, setError] = useState<string | null>(null)
@@ -46,6 +63,13 @@ export function LeftRail({ project, mode, hasFrames, onShowAnimatic, onEnterRevi
       <p className="text-[13px] font-medium tracking-[0.24em] text-foreground">SCENELAB</p>
 
       <AuthButton />
+
+      <SceneLibrary
+        activeRowId={activeRowId}
+        onOpen={onOpenScene}
+        onNew={onNewScene}
+        busy={generating}
+      />
 
       <div className="flex flex-col gap-2">
         <p className={SECTION_LABEL}>PROJECT</p>

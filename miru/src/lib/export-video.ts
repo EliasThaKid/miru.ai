@@ -21,11 +21,35 @@ function supported(): boolean {
   )
 }
 
+// MP4 first, WebM as the fallback.
+//
+// MP4/H.264 is what editing software, phones, and social platforms actually accept, so it is
+// preferred wherever the browser can record it (Safari, and Chrome from v130). Support is
+// genuinely browser-dependent and cannot be polyfilled here — CLAUDE.md rules out FFmpeg and
+// server-side video — so this feature-detects rather than promising a format it can't deliver.
+// The file extension follows the real recording type; a .mp4 container holding WebM would be
+// worse than an honest .webm.
+const MIME_CANDIDATES = [
+  'video/mp4;codecs=avc1.42E01E',
+  'video/mp4;codecs=h264',
+  'video/mp4',
+  'video/webm;codecs=vp9',
+  'video/webm;codecs=vp8',
+  'video/webm',
+] as const
+
 function pickMimeType(): string {
-  for (const t of ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm']) {
+  for (const t of MIME_CANDIDATES) {
     if (MediaRecorder.isTypeSupported(t)) return t
   }
   return ''
+}
+
+// Container type and extension derived from whatever the recorder actually accepted.
+function containerFor(mimeType: string): { type: string; extension: string } {
+  return mimeType.startsWith('video/mp4')
+    ? { type: 'video/mp4', extension: 'mp4' }
+    : { type: 'video/webm', extension: 'webm' }
 }
 
 function loadVideo(src: string): Promise<HTMLVideoElement> {
@@ -233,5 +257,9 @@ export async function exportSequenceVideo(project: Project, onProgress?: (fracti
 
   await stopped
   onProgress?.(1)
-  triggerDownload(new Blob(chunks, { type: 'video/webm' }), `${baseName(project)}-animatic.webm`)
+  const container = containerFor(mimeType)
+  triggerDownload(
+    new Blob(chunks, { type: container.type }),
+    `${baseName(project)}-animatic.${container.extension}`
+  )
 }

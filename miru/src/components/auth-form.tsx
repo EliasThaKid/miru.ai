@@ -40,7 +40,7 @@ export function AuthForm({ mode }: { mode: Mode }) {
         // If email confirmation is off, a session comes back immediately → go home.
         // If it's on, there's no session yet and the user must confirm by email.
         if (data.session) {
-          router.push('/')
+          router.push('/studio')
           router.refresh()
           return
         }
@@ -48,7 +48,7 @@ export function AuthForm({ mode }: { mode: Mode }) {
       } else {
         const { error } = await supabase.auth.signInWithPassword({ email, password })
         if (error) throw error
-        router.push('/')
+        router.push('/studio')
         router.refresh()
         return
       }
@@ -184,7 +184,7 @@ export function AuthForm({ mode }: { mode: Mode }) {
         </p>
 
         <p className="mt-8 text-center text-[12px] text-[var(--text-tertiary)]">
-          <Link href="/" className="hover:text-foreground">
+          <Link href="/studio" className="hover:text-foreground">
             ← Continue without an account (demo)
           </Link>
         </p>
