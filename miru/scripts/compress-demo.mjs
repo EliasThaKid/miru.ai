@@ -8,7 +8,8 @@
 // app: playback stays a native <video> tag and nothing transcodes on a server or in a
 // browser. Preparing static assets on a laptop is a different activity.
 //
-// Requires ffmpeg on PATH. Usage:  node scripts/compress-demo.mjs [--crf=28]
+// Requires ffmpeg on PATH.
+// Usage:  node scripts/compress-demo.mjs [--crf=28] [--dir=public/hero]
 
 import { execFile } from 'node:child_process'
 import { readdir, rename, stat, unlink } from 'node:fs/promises'
@@ -16,12 +17,12 @@ import { join } from 'node:path'
 import { promisify } from 'node:util'
 
 const run = promisify(execFile)
-const DIR = join('public', 'demo')
+const DIR = process.argv.find((a) => a.startsWith('--dir='))?.split('=')[1] ?? join('public', 'demo')
 const CRF = process.argv.find((a) => a.startsWith('--crf='))?.split('=')[1] ?? '28'
 
 const files = (await readdir(DIR)).filter((f) => f.endsWith('.mp4'))
 if (files.length === 0) {
-  console.error(`No .mp4 files in ${DIR}. Run build-demo.mjs first.`)
+  console.error(`No .mp4 files in ${DIR}. Run build-demo.mjs (or generate-hero.mjs) first.`)
   process.exit(1)
 }
 
