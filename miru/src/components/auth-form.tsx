@@ -91,6 +91,27 @@ export function AuthForm({ mode }: { mode: Mode }) {
             : 'Sign in to use your token balance across sessions.'}
         </p>
 
+        {/* Consent sits ABOVE both account-creation paths. GitHub is one click and creates an
+            account immediately, so consent placed under the form could be agreed to without
+            ever having been on screen. */}
+        {isSignUp ? (
+          <p className="mb-5 text-[12px] leading-[1.6] text-[var(--text-tertiary)]">
+            By creating an account you agree to the{' '}
+            <Link href="/legal/terms" className="underline underline-offset-2 hover:text-foreground">
+              Terms
+            </Link>
+            ,{' '}
+            <Link href="/legal/acceptable-use" className="underline underline-offset-2 hover:text-foreground">
+              Acceptable Use Policy
+            </Link>
+            , and{' '}
+            <Link href="/legal/privacy" className="underline underline-offset-2 hover:text-foreground">
+              Privacy Policy
+            </Link>
+            .
+          </p>
+        ) : null}
+
         <Button
           type="button"
           variant="outline"
@@ -141,26 +162,6 @@ export function AuthForm({ mode }: { mode: Mode }) {
                 : 'Sign in'}
           </Button>
         </form>
-
-        {/* Consent shown at the point of account creation, where it means something — not
-            buried in a footer. */}
-        {isSignUp ? (
-          <p className="mt-4 text-center text-[12px] leading-[1.6] text-[var(--text-tertiary)]">
-            By creating an account you agree to the{' '}
-            <Link href="/legal/terms" className="underline underline-offset-2 hover:text-foreground">
-              Terms
-            </Link>
-            ,{' '}
-            <Link href="/legal/acceptable-use" className="underline underline-offset-2 hover:text-foreground">
-              Acceptable Use Policy
-            </Link>
-            , and{' '}
-            <Link href="/legal/privacy" className="underline underline-offset-2 hover:text-foreground">
-              Privacy Policy
-            </Link>
-            .
-          </p>
-        ) : null}
 
         {error ? <p className="mt-4 text-[13px] text-destructive">{error}</p> : null}
         {notice ? <p className="mt-4 text-[13px] text-foreground">{notice}</p> : null}
