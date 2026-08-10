@@ -19,6 +19,7 @@ import {
   type SubmitJobResult,
 } from '@/app/actions/render-jobs'
 import { extractScriptContext } from '@/app/actions/extract-context'
+import { getTokenCosts, type TokenCosts } from '@/app/actions/token-costs'
 import { refineCharacterDescription, refineSettingDescription } from '@/app/actions/refine-character'
 import { AnimaticPlayer } from '@/components/animatic-player'
 import { HeroCanvas } from '@/components/hero-canvas'
@@ -33,6 +34,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { extractLastFrame } from '@/lib/extract-frame'
 import { JobWatcher } from '@/lib/job-poller'
 import { isDescriptionWeak, parseAvoid } from '@/lib/prompts'
+import { isSupabaseConfigured } from '@/lib/supabase/client'
 import { loadActiveProject, saveActiveProject, ANON_CONTEXT, type PersistContext } from '@/lib/project-store'
 import { newId } from '@/lib/utils'
 import type { Character, ConnectionMode, Moment, Project, Setting, StylePreset, Transition, VisualFocus } from '@/types'
@@ -54,10 +56,11 @@ const STYLE_PRESETS: { value: StylePreset; label: string }[] = [
   { value: 'hyper-realistic', label: 'Hyper-Realistic' },
 ]
 
-// Ballpark FLUX cost per image — labeled "≈" in the UI.
-const ESTIMATED_COST_PER_IMAGE_USD = 0.04
-// Ballpark Kling 1.6 cost per 5s clip — labeled "≈" in the UI.
-const ESTIMATED_COST_PER_VIDEO_USD = 0.4
+// Fallback prices, used only until getTokenCosts() answers (and in an unconfigured local
+// build, where nothing is charged at all). Kept in step with the server defaults in
+// lib/metering.ts — the server remains the authority; these just avoid a blank price on the
+// first paint.
+const FALLBACK_TOKEN_COSTS: TokenCosts = { still: 1, clip: 8, bridge: 10 }
 
 // How many clips may be in flight at once during a hosted Animate All. See runAnimateAll for
 // why this is small rather than "as many as fal will take".
@@ -85,6 +88,13 @@ function findTransition(transitions: Transition[], fromId: string, toId: string)
   return transitions.find((t) => t.fromMomentId === fromId && t.toMomentId === toId) ?? null
 }
 
+// Token quotes are EXACT, not approximate: the server charges tokenCost.X per item, so there
+// is no rounding to hedge against. The old USD figures were the owner's provider cost, which
+// was never what the user paid — hence "≈". Nothing here should reintroduce that qualifier.
+function tokens(n: number): string {
+  return `${n} token${n === 1 ? '' : 's'}`
+}
+
 export default function Home() {
   const [project, setProject] = useState<Project>(EMPTY_PROJECT)
   const [hasLoaded, setHasLoaded] = useState(false)
@@ -93,6 +103,28 @@ export default function Home() {
 
   const [momentsError, setMomentsError] = useState<string | null>(null)
   const [confirmRegenerate, setConfirmRegenerate] = useState(false)
+
+  // Whether generation is actually charged. In a build without Supabase the app is the
+  // original localStorage demo and nothing is metered, so quoting a price would be a lie.
+  // Derived from a NEXT_PUBLIC_ var, so server and client agree and hydration is stable.
+  const metered = isSupabaseConfigured()
+
+  // Live token prices. Fetched once — they come from server env and don't change mid-session.
+  // set inside .then rather than in the effect body, per react-hooks/set-state-in-effect.
+  const [tokenCosts, setTokenCosts] = useState<TokenCosts>(FALLBACK_TOKEN_COSTS)
+  useEffect(() => {
+    let active = true
+    getTokenCosts()
+      .then((costs) => {
+        if (active) setTokenCosts(costs)
+      })
+      .catch(() => {
+        // Keep the fallback prices; a missing quote is worse than a default one.
+      })
+    return () => {
+      active = false
+    }
+  }, [])
 
   const [generatingImageIds, setGeneratingImageIds] = useState<Set<string>>(new Set())
   const [imageErrors, setImageErrors] = useState<Record<string, string>>({})
@@ -1441,8 +1473,10 @@ export default function Home() {
                           ) : null}
                         </div>
                         <p className="text-[12px] text-[var(--text-tertiary)]">
-                          8–12 shots · then ≈ ${(8 * ESTIMATED_COST_PER_IMAGE_USD).toFixed(2)}–
-                          {(12 * ESTIMATED_COST_PER_IMAGE_USD).toFixed(2)} to render all stills
+                          8–12 shots
+                          {metered
+                            ? ` · then ${8 * tokenCosts.still}–${tokens(12 * tokenCosts.still)} to render all stills`
+                            : null}
                         </p>
                       </>
                     )}
@@ -1480,7 +1514,8 @@ export default function Home() {
                       disabled={animatingAll}
                       className="text-[12px] text-[var(--muted-foreground)] transition-colors hover:text-foreground disabled:opacity-40"
                     >
-                      Render remaining ({pendingCount}) ≈ ${(pendingCount * ESTIMATED_COST_PER_IMAGE_USD).toFixed(2)}
+                      Render remaining ({pendingCount})
+                      {metered ? ` · ${tokens(pendingCount * tokenCosts.still)}` : null}
                     </button>
                   ) : null}
 
@@ -1522,7 +1557,7 @@ export default function Home() {
                           }}
                           className="text-[12px] text-foreground transition-colors hover:text-foreground"
                         >
-                          Animate ≈ ${(animatableCount * ESTIMATED_COST_PER_VIDEO_USD).toFixed(2)}
+                          Animate{metered ? ` · ${tokens(animatableCount * tokenCosts.clip)}` : ''}
                         </button>
                         <button
                           type="button"
@@ -1541,8 +1576,8 @@ export default function Home() {
                       >
                         {failedAnimationCount > 0
                           ? `Retry animation (${failedAnimationCount} failed)`
-                          : `Animate all (${animatableCount})`}{' '}
-                        ≈ ${(animatableCount * ESTIMATED_COST_PER_VIDEO_USD).toFixed(2)}
+                          : `Animate all (${animatableCount})`}
+                        {metered ? ` · ${tokens(animatableCount * tokenCosts.clip)}` : null}
                       </button>
                     )
                   ) : animatedCount > 0 ? (
