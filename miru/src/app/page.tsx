@@ -6,7 +6,7 @@ import { HeroAttribution, LandingHero } from '@/components/landing-hero'
 // /studio; the $0 demo is one click away, deliberately, so an interviewer can try SceneLab
 // without creating an account.
 export const metadata = {
-  title: 'SceneLab — script to storyboard to animatic',
+  title: "SceneLab — watch what's on your mind",
   description:
     'Paste a script. Get a shot-by-shot storyboard, then an animatic you can watch and export.',
 }
