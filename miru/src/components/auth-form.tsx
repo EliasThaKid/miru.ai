@@ -10,6 +10,20 @@ import { Label } from '@/components/ui/label'
 
 type Mode = 'sign-in' | 'sign-up'
 
+// Fixed copy for the codes /auth/callback can redirect with. Mapped here rather than
+// reflecting the provider's own error_description, which is attacker-influenceable text and
+// must not be shown as if it were ours.
+const AUTH_ERRORS: Record<string, string> = {
+  provider: 'GitHub cancelled the sign-in. Nothing was changed — try again.',
+  missing: 'That sign-in link is incomplete or has already been used. Try signing in again.',
+  exchange:
+    'We could not finish signing you in. If you already have an account with this email, sign in with your password below — a GitHub login cannot attach itself to an existing email account on its own.',
+}
+
+function authErrorMessage(code: string | null | undefined): string | null {
+  return code ? (AUTH_ERRORS[code] ?? 'Sign-in failed. Try again.') : null
+}
+
 // GitHub mark, inlined rather than fetched: an OAuth button that waits on a remote asset can
 // render as a bare word on a slow connection, and this is the first thing a new user sees.
 // currentColor so it follows the button's text through hover and disabled states.
@@ -24,12 +38,14 @@ function GithubMark() {
 // One form for both routes. The Supabase browser client is only created inside handlers,
 // so SSR prerender never needs the env vars — the anonymous demo keeps building/working
 // even with Supabase unconfigured.
-export function AuthForm({ mode }: { mode: Mode }) {
+export function AuthForm({ mode, errorCode }: { mode: Mode; errorCode?: string | null }) {
   const router = useRouter()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [busy, setBusy] = useState<null | 'email' | 'github'>(null)
-  const [error, setError] = useState<string | null>(null)
+  // Seeded from the callback's ?error= so a failed OAuth round trip explains itself instead
+  // of silently returning you to this page, which is indistinguishable from a dead button.
+  const [error, setError] = useState<string | null>(authErrorMessage(errorCode))
   const [notice, setNotice] = useState<string | null>(null)
 
   const isSignUp = mode === 'sign-up'
@@ -101,6 +117,15 @@ export function AuthForm({ mode }: { mode: Mode }) {
             ? 'New accounts start with a small token allowance for testing.'
             : 'Sign in to use your token balance across sessions.'}
         </p>
+
+        {/* Above the buttons, not under the form: a redirect back from the provider lands at
+            the top of the page, and an explanation below the fold reads as no explanation. */}
+        {error ? (
+          <p className="mb-5 text-[13px] leading-[1.6] text-destructive" role="alert">
+            {error}
+          </p>
+        ) : null}
+        {notice ? <p className="mb-5 text-[13px] leading-[1.6] text-foreground">{notice}</p> : null}
 
         {/* Consent sits ABOVE both account-creation paths. GitHub is one click and creates an
             account immediately, so consent placed under the form could be agreed to without
@@ -174,9 +199,6 @@ export function AuthForm({ mode }: { mode: Mode }) {
                 : 'Sign in'}
           </Button>
         </form>
-
-        {error ? <p className="mt-4 text-[13px] text-destructive">{error}</p> : null}
-        {notice ? <p className="mt-4 text-[13px] text-foreground">{notice}</p> : null}
 
         <p className="mt-6 text-center text-[13px] text-[var(--muted-foreground)]">
           {isSignUp ? (
