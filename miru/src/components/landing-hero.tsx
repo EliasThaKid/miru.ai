@@ -48,14 +48,17 @@ export function LandingHero() {
         <div className="absolute inset-0 bg-black/55" />
         <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(0,0,0,0.75)_0%,rgba(0,0,0,0.45)_45%,rgba(0,0,0,0.15)_100%)]" />
       </div>
-
-      {/* Attribution. Outside the aria-hidden background so screen readers get it, and shown
-          only when there is actually generated footage — the claim has to be true. */}
-      {HERO_VIDEO ? (
-        <p className="absolute right-6 bottom-6 z-20 text-[11px] text-white/40 sm:right-10">
-          Header generated with SceneLab
-        </p>
-      ) : null}
     </>
   )
+}
+
+// Attribution for the generated footage. Lives in the page's footer row rather than pinned to
+// the viewport corner: absolutely positioned, it sat on top of the legal links as soon as the
+// viewport got short or narrow enough for them to wrap. In the flow it just wraps too.
+//
+// Rendered only when there IS generated footage — the claim has to be true — which is why it
+// ships from this file, next to the flag it depends on.
+export function HeroAttribution() {
+  if (!HERO_VIDEO) return null
+  return <p className="text-[12px] text-[var(--text-tertiary)]">Header generated with SceneLab</p>
 }

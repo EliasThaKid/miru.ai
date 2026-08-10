@@ -64,8 +64,11 @@ export async function createCheckoutSession(packId: string): Promise<CheckoutRes
         pack_id: pack.id,
         tokens: String(pack.tokens),
       },
-      success_url: `${origin}/?purchase=success`,
-      cancel_url: `${origin}/?purchase=cancelled`,
+      // Back into the app, not to `/` — that is the marketing landing page now, so a buyer
+      // was being returned to a signed-out-looking front door with no sign their purchase
+      // landed. /studio at least shows the rail, where the new balance appears.
+      success_url: `${origin}/studio?purchase=success`,
+      cancel_url: `${origin}/studio?purchase=cancelled`,
     })
 
     if (!session.url) return { ok: false, error: 'Stripe did not return a checkout URL.' }

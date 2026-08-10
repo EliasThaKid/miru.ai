@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { LandingHero } from '@/components/landing-hero'
+import { HeroAttribution, LandingHero } from '@/components/landing-hero'
 
 // Front door. Static and server-rendered — no Supabase, no client work — so it stays fast and
 // renders identically for a signed-out visitor and a search crawler. The app itself lives at
@@ -61,19 +61,25 @@ export default function LandingPage() {
           </p>
         </div>
 
-        <footer className="flex flex-wrap gap-4 text-[12px] text-[var(--text-tertiary)]">
-          <Link href="/legal/terms" className="transition-colors hover:text-foreground">
-            Terms
-          </Link>
-          <Link href="/legal/privacy" className="transition-colors hover:text-foreground">
-            Privacy
-          </Link>
-          <Link href="/legal/acceptable-use" className="transition-colors hover:text-foreground">
-            Acceptable Use
-          </Link>
-          <Link href="/legal/refunds" className="transition-colors hover:text-foreground">
-            Refunds
-          </Link>
+        {/* Legal links and the hero attribution share one row and separate onto their own
+            lines when there isn't width for both. The attribution used to be pinned to the
+            viewport corner, which put it straight through these links on short screens. */}
+        <footer className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 text-[12px] text-[var(--text-tertiary)]">
+          <nav className="flex flex-wrap gap-4">
+            <Link href="/legal/terms" className="transition-colors hover:text-foreground">
+              Terms
+            </Link>
+            <Link href="/legal/privacy" className="transition-colors hover:text-foreground">
+              Privacy
+            </Link>
+            <Link href="/legal/acceptable-use" className="transition-colors hover:text-foreground">
+              Acceptable Use
+            </Link>
+            <Link href="/legal/refunds" className="transition-colors hover:text-foreground">
+              Refunds
+            </Link>
+          </nav>
+          <HeroAttribution />
         </footer>
       </div>
     </main>
