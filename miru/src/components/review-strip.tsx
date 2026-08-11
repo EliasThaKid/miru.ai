@@ -125,7 +125,7 @@ function JointButton({
       type="button"
       onClick={onClick}
       aria-label={`Connection from moment ${from.number} to moment ${to.number}`}
-      className={`flex h-24 w-7 shrink-0 items-center justify-center text-[13px] transition-colors hover:text-foreground ${color} ${
+      className={`flex h-24 w-11 shrink-0 items-center justify-center text-[13px] transition-colors hover:text-foreground lg:w-7 ${color} ${
         status === 'generating' ? 'animate-pulse' : ''
       }`}
     >

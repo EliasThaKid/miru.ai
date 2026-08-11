@@ -123,7 +123,7 @@ function FrameInspector({
   const overrideStale = !!override && !!moment.userPromptOverrideStale
 
   return (
-    <div className="flex w-72 shrink-0 flex-col gap-5">
+    <div className="flex w-full flex-col gap-5 lg:w-72 lg:shrink-0">
       <div className="flex flex-col gap-1">
         <p className={LABEL}>SHOT</p>
         <div className="flex items-center gap-2">
@@ -405,7 +405,7 @@ function ConnectionInspector({
   const [direction, setDirection] = useState('')
 
   return (
-    <div className="flex w-72 shrink-0 flex-col gap-5">
+    <div className="flex w-full flex-col gap-5 lg:w-72 lg:shrink-0">
       <div className="flex flex-col gap-1">
         <p className={LABEL}>CONNECTION</p>
         <p className="text-sm text-foreground">

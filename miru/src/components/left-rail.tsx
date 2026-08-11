@@ -8,7 +8,7 @@ import { AuthButton } from '@/components/auth-button'
 import { SceneLibrary } from '@/components/scene-library'
 import type { Project } from '@/types'
 
-interface LeftRailProps {
+export interface LeftRailProps {
   project: Project
   // Simplified view of the machine: composing/listing → 'compose'; transitioning/reviewing → 'review'.
   mode: 'compose' | 'review'
@@ -23,10 +23,20 @@ interface LeftRailProps {
   generating: boolean
 }
 
-const ENTRY = 'flex w-full items-center gap-2 py-1.5 text-left text-[13px] text-[var(--muted-foreground)] transition-colors hover:text-foreground disabled:pointer-events-none disabled:opacity-40'
+// py-2.5 gives a ~40px touch row inside the mobile drawer; lg: restores the tighter
+// desktop rhythm.
+const ENTRY = 'flex w-full items-center gap-2 py-2.5 text-left text-[13px] text-[var(--muted-foreground)] transition-colors hover:text-foreground disabled:pointer-events-none disabled:opacity-40 lg:py-1.5'
 const SECTION_LABEL = 'text-[11px] tracking-[0.18em] text-[var(--text-tertiary)]'
 
-export function LeftRail({
+// The rail's contents, with no layout of its own, so the desktop <aside> and the mobile
+// drawer render the same thing. This is deliberate: the rail is the only mount point for
+// auth, the token balance, Buy Tokens, the scene library, navigation, and exports, and
+// duplicating that list is how mobile lost all of it in the first place.
+//
+// onNavigate lets the drawer close itself when an entry actually navigates. Export buttons
+// deliberately do NOT call it — export progress ("Recording… 42%") and any error render
+// inside this component, and closing the drawer would hide them mid-run.
+export function RailContent({
   project,
   mode,
   hasFrames,
@@ -37,7 +47,8 @@ export function LeftRail({
   onOpenScene,
   onNewScene,
   generating,
-}: LeftRailProps) {
+  onNavigate,
+}: LeftRailProps & { onNavigate?: () => void }) {
   const [busy, setBusy] = useState<'pdf' | 'zip' | 'video' | null>(null)
   const [videoPct, setVideoPct] = useState(0)
   const [error, setError] = useState<string | null>(null)
@@ -59,15 +70,21 @@ export function LeftRail({
   }
 
   return (
-    <aside className="sticky top-0 hidden h-svh w-[248px] shrink-0 flex-col gap-8 border-r border-white/10 px-5 py-6 md:flex">
+    <>
       <p className="text-[13px] font-medium tracking-[0.24em] text-foreground">SCENELAB</p>
 
       <AuthButton />
 
       <SceneLibrary
         activeRowId={activeRowId}
-        onOpen={onOpenScene}
-        onNew={onNewScene}
+        onOpen={(rowId) => {
+          onOpenScene(rowId)
+          onNavigate?.()
+        }}
+        onNew={() => {
+          onNewScene()
+          onNavigate?.()
+        }}
         busy={generating}
       />
 
@@ -76,7 +93,13 @@ export function LeftRail({
         <button
           type="button"
           className={ENTRY}
-          onClick={mode === 'review' ? onBackToCompose : undefined}
+          // onNavigate fires even when this entry is already active: on desktop that is
+          // invisible, but in the mobile drawer a tap that neither navigates nor closes
+          // reads as a dead button.
+          onClick={() => {
+            if (mode === 'review') onBackToCompose()
+            onNavigate?.()
+          }}
           data-active={mode === 'compose'}
           style={mode === 'compose' ? { color: 'var(--foreground)' } : undefined}
         >
@@ -85,7 +108,10 @@ export function LeftRail({
         <button
           type="button"
           className={ENTRY}
-          onClick={mode === 'compose' ? onEnterReview : undefined}
+          onClick={() => {
+            if (mode === 'compose') onEnterReview()
+            onNavigate?.()
+          }}
           disabled={!hasFrames && mode === 'compose'}
           style={mode === 'review' ? { color: 'var(--foreground)' } : undefined}
         >
@@ -98,7 +124,14 @@ export function LeftRail({
           </span>
         </button>
         {hasFrames ? (
-          <button type="button" className={ENTRY} onClick={onShowAnimatic}>
+          <button
+            type="button"
+            className={ENTRY}
+            onClick={() => {
+              onShowAnimatic()
+              onNavigate?.()
+            }}
+          >
             Animatic
           </button>
         ) : null}
@@ -134,6 +167,17 @@ export function LeftRail({
           </motion.div>
         ) : null}
       </AnimatePresence>
+    </>
+  )
+}
+
+// Desktop shell. Gated at lg (1024px), not md: review's fixed chrome is 640px wide, so at
+// md the canvas would still only get 128px. Below lg the same RailContent renders in
+// MobileBar's drawer.
+export function LeftRail(props: LeftRailProps) {
+  return (
+    <aside className="sticky top-0 hidden h-svh w-[248px] shrink-0 flex-col gap-8 overflow-y-auto border-r border-white/10 px-5 py-6 lg:flex">
+      <RailContent {...props} />
     </aside>
   )
 }

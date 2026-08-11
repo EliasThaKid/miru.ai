@@ -25,6 +25,7 @@ import { AnimaticPlayer } from '@/components/animatic-player'
 import { HeroCanvas } from '@/components/hero-canvas'
 import { Inspector } from '@/components/inspector'
 import { LeftRail } from '@/components/left-rail'
+import { MobileBar } from '@/components/mobile-bar'
 import { ReviewStrip, type JointStatus, type ReviewSelection, type SlotStatus } from '@/components/review-strip'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -35,6 +36,7 @@ import { extractLastFrame } from '@/lib/extract-frame'
 import { JobWatcher } from '@/lib/job-poller'
 import { isDescriptionWeak, parseAvoid } from '@/lib/prompts'
 import { isSupabaseConfigured } from '@/lib/supabase/client'
+import { useIsDesktop } from '@/lib/use-is-desktop'
 import { loadActiveProject, saveActiveProject, ANON_CONTEXT, type PersistContext } from '@/lib/project-store'
 import { newId } from '@/lib/utils'
 import type { Character, ConnectionMode, Moment, Project, Setting, StylePreset, Transition, VisualFocus } from '@/types'
@@ -151,6 +153,7 @@ export default function Home() {
   const autoDetectedForRef = useRef<string | null>(null)
 
   const reduceMotion = useReducedMotion() ?? false
+  const isDesktop = useIsDesktop()
 
   // Fresh project reads inside long-running async loops (the sequential render queue).
   const projectRef = useRef(project)
@@ -1206,9 +1209,53 @@ export default function Home() {
     .map((m) => m.number)
   const queuedToAnimate = Math.max(animatableCount - animatingNumbers.length, 0)
 
+  // Exactly one Inspector exists at any width. It holds local draft state, so mounting a
+  // second (hidden) copy would let a stale draft resurface on resize — hence a node handed
+  // to whichever slot is live, rather than two renders gated by CSS.
+  const inspectorNode = (
+    <Inspector
+      selection={selection}
+      project={project}
+      getTransition={getTransition}
+      slotStatus={slotStatus}
+      jointStatus={jointStatus}
+      onEditPrompt={handleEditPrompt}
+      onResetPrompt={handleResetPrompt}
+      onEditDescription={handleEditDescription}
+      onEditDuration={handleEditDuration}
+      onToggleCharacter={handleToggleCharacter}
+      onSetFocus={handleSetFocus}
+      onEditAvoid={handleEditAvoid}
+      onSetLocation={handleSetLocation}
+      onEditMotion={handleEditMotion}
+      onMove={handleMoveMoment}
+      onRender={handleRenderFrame}
+      onRegenerateImage={handleRegenerateImage}
+      onAnimate={handleAnimate}
+      onAnimateAnchored={handleAnimateAnchored}
+      onReAnimate={handleReAnimate}
+      onSetConnectionMode={handleSetConnectionMode}
+      onGenerateBridge={handleGenerateBridge}
+      errors={{
+        image: selection.kind === 'moment' ? imageErrors[selection.id] || undefined : undefined,
+        video: selection.kind === 'moment' ? videoErrors[selection.id] || undefined : undefined,
+        bridge: selection.kind === 'joint' ? bridgeErrors[selection.fromId] || undefined : undefined,
+      }}
+    />
+  )
+  const inspectorLive = mode === 'reviewing' && !showAnimatic
+
   return (
     <MotionConfig transition={reduceMotion ? { duration: 0.2 } : { duration: 0.5, ease: [0.4, 0, 0.2, 1] }}>
-      <div className="flex min-h-svh w-full">
+      {/* Review is a fixed-viewport editor (as it already was on desktop), so it needs a
+          DEFINITE height — `min-h-svh` is only a minimum, which lets `main`'s flex-1 grow
+          past the viewport and pushes the thumbnail strip out of reach behind
+          `overflow-hidden`. Compose keeps min-h-svh so it can grow and scroll normally. */}
+      <div
+        className={`flex w-full flex-col lg:flex-row ${
+          mode === 'reviewing' ? 'h-svh overflow-hidden' : 'min-h-svh'
+        }`}
+      >
         <LeftRail
           project={project}
           mode={railMode}
@@ -1227,11 +1274,40 @@ export default function Home() {
           generating={anyGenerating}
         />
 
-        {/* Without this, locked controls just look broken. Fixed rather than in flow so it
-            can't disturb either the compose column or the review layout. */}
+        <MobileBar
+          project={project}
+          mode={railMode}
+          hasFrames={hasFrames}
+          onShowAnimatic={() => setShowAnimatic(true)}
+          onEnterReview={() => {
+            if (project.moments.length > 0) {
+              setSelection({ kind: 'moment', id: project.moments[0].id })
+              setMode('reviewing')
+            }
+          }}
+          onBackToCompose={() => setMode('composing')}
+          activeRowId={persistContextRef.current.rowId}
+          onOpenScene={handleOpenScene}
+          onNewScene={handleNewScene}
+          generating={anyGenerating}
+          showDetails={inspectorLive}
+          inspector={
+            isDesktop ? null : (
+              // Same demo-mode lockout the desktop column applies — the sheet is the only
+              // way to reach the paid generate buttons on a phone.
+              <div inert={demoMode} className={demoMode ? 'opacity-60' : ''}>
+                {inspectorNode}
+              </div>
+            )
+          }
+        />
+
+        {/* Without this, locked controls just look broken. Fixed rather than in flow at lg+ so
+            it can't disturb the compose column or the review layout; below lg it stays in flow
+            instead, where fixed would overlap the mobile bar. */}
         {demoMode ? (
-          <div className="pointer-events-none fixed inset-x-0 top-0 z-50 flex justify-center px-4 py-3">
-            <div className="pointer-events-auto flex items-center gap-3 rounded-full border border-white/15 bg-black/80 px-4 py-1.5 text-[12px] text-[var(--muted-foreground)] backdrop-blur">
+          <div className="pointer-events-none z-50 flex shrink-0 justify-center px-4 py-3 lg:fixed lg:inset-x-0 lg:top-0">
+            <div className="pointer-events-auto flex max-w-full flex-col items-center gap-1 rounded-2xl border border-white/15 bg-black/80 px-4 py-1.5 text-center text-[12px] text-[var(--muted-foreground)] backdrop-blur sm:flex-row sm:gap-3 sm:rounded-full sm:text-left">
               <span>Demo — a finished scene, read-only. Play it, browse the shots, export it.</span>
               <a href="/sign-up" className="text-foreground underline underline-offset-2">
                 Make your own
@@ -1240,7 +1316,7 @@ export default function Home() {
           </div>
         ) : null}
 
-        <main className="min-w-0 flex-1">
+        <main className="flex min-h-0 min-w-0 flex-1 flex-col">
           <AnimatePresence initial={false} mode="wait">
             {mode !== 'reviewing' ? (
               <motion.div
@@ -1251,7 +1327,7 @@ export default function Home() {
                 // tech. Cheaper and far harder to get wrong than threading a `readOnly` prop
                 // through every control, and it cannot be missed when a new control is added.
                 inert={demoMode}
-                className={`mx-auto flex w-full max-w-[640px] flex-col gap-10 px-6 py-16 ${
+                className={`mx-auto flex w-full max-w-[640px] flex-col gap-10 px-4 py-8 lg:px-6 lg:py-16 ${
                   demoMode ? 'opacity-60' : ''
                 }`}
               >
@@ -1298,12 +1374,12 @@ export default function Home() {
                   </div>
                   {project.characters.map((c) => (
                     <div key={c.id} className="flex flex-col gap-1.5">
-                      <div className="flex gap-2">
+                      <div className="flex flex-col gap-2 sm:flex-row">
                         <Input
                           value={c.name}
                           onChange={(e) => handleUpdateCharacter(c.id, { name: e.target.value })}
                           placeholder="Name"
-                          className="w-36"
+                          className="w-full sm:w-36"
                           aria-label="Character name"
                         />
                         <Textarea
@@ -1362,12 +1438,12 @@ export default function Home() {
                     <p className="text-[11px] tracking-[0.18em] text-[var(--text-tertiary)]">SETTINGS</p>
                     {project.settings.map((s) => (
                       <div key={s.id} className="flex flex-col gap-1.5">
-                        <div className="flex gap-2">
+                        <div className="flex flex-col gap-2 sm:flex-row">
                           <Input
                             value={s.name}
                             onChange={(e) => handleUpdateSetting(s.id, { name: e.target.value })}
                             placeholder="Location name"
-                            className="w-44"
+                            className="w-full sm:w-44"
                             aria-label="Setting name"
                           />
                           <Textarea
@@ -1489,13 +1565,16 @@ export default function Home() {
                 key="review"
                 initial={{ opacity: reduceMotion ? 0 : 1 }}
                 animate={{ opacity: 1 }}
-                className="flex h-svh min-w-0 overflow-hidden"
+                className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden lg:h-svh lg:flex-row"
               >
                 {/* Center workspace — only the width left after the left rail and the
                     inspector. min-w-0 is what lets the thumbnail rail scroll horizontally
                     inside this column instead of overflowing under the inspector. */}
-                <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-hidden px-8 py-6">
-                <div className="flex items-center gap-3">
+                <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-hidden px-4 py-4 lg:px-8 lg:py-6">
+                {/* flex-wrap matters here: this row inlines long confirmation sentences
+                    ("Cancel stops the ones that haven't started…") that otherwise force
+                    horizontal overflow on a phone instead of wrapping. */}
+                <div className="flex flex-wrap items-center gap-3">
                   <p className="text-[11px] tracking-[0.18em] text-[var(--text-tertiary)]">STORYBOARD</p>
                   {queueRunning ? (
                     <button
@@ -1631,7 +1710,10 @@ export default function Home() {
                 {/* Inspector — its own full-height column with independent vertical scroll,
                     so a long Description/Motion/Prompt never clips the Generation section and
                     never overlaps the thumbnail rail. Hidden while the animatic is playing. */}
-                {!showAnimatic ? (
+                {/* Rendered only on desktop — deliberately not `hidden lg:block`, which would
+                    still mount a second Inspector. Below lg the same node lives in the mobile
+                    bar's bottom sheet. */}
+                {inspectorLive && isDesktop ? (
                   // Inert in demo mode: the inspector is where every edit and every paid
                   // generate button lives. Selecting moments in the strip still works, so the
                   // panel keeps showing each shot's details — just not changing them.
@@ -1641,35 +1723,7 @@ export default function Home() {
                       demoMode ? 'opacity-60' : ''
                     }`}
                   >
-                    <Inspector
-                      selection={selection}
-                      project={project}
-                      getTransition={getTransition}
-                      slotStatus={slotStatus}
-                      jointStatus={jointStatus}
-                      onEditPrompt={handleEditPrompt}
-                      onResetPrompt={handleResetPrompt}
-                      onEditDescription={handleEditDescription}
-                      onEditDuration={handleEditDuration}
-                      onToggleCharacter={handleToggleCharacter}
-                      onSetFocus={handleSetFocus}
-                      onEditAvoid={handleEditAvoid}
-                      onSetLocation={handleSetLocation}
-                      onEditMotion={handleEditMotion}
-                      onMove={handleMoveMoment}
-                      onRender={handleRenderFrame}
-                      onRegenerateImage={handleRegenerateImage}
-                      onAnimate={handleAnimate}
-                      onAnimateAnchored={handleAnimateAnchored}
-                      onReAnimate={handleReAnimate}
-                      onSetConnectionMode={handleSetConnectionMode}
-                      onGenerateBridge={handleGenerateBridge}
-                      errors={{
-                        image: selection.kind === 'moment' ? imageErrors[selection.id] || undefined : undefined,
-                        video: selection.kind === 'moment' ? videoErrors[selection.id] || undefined : undefined,
-                        bridge: selection.kind === 'joint' ? bridgeErrors[selection.fromId] || undefined : undefined,
-                      }}
-                    />
+                    {inspectorNode}
                   </div>
                 ) : null}
               </motion.div>
