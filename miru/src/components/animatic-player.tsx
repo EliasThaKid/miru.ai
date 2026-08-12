@@ -120,8 +120,12 @@ export function AnimaticPlayer({ project, onClose }: AnimaticPlayerProps) {
     )
 
   return (
-    <div className="flex flex-col gap-3">
-      <div className="relative mx-auto aspect-9/16 w-full max-w-sm overflow-hidden rounded-2xl bg-black">
+    // Height-driven, like HeroCanvas. A width-driven 9:16 frame (w-full max-w-sm) is ~636px
+    // tall on a phone but only gets ~540px between the toolbar and the thumbnail strip, so it
+    // overflowed and its controls rendered underneath the strip. max-w-sm still caps the
+    // desktop width; on short desktop windows this now shrinks instead of overlapping too.
+    <div className="flex h-full min-h-0 w-full flex-col items-center gap-3">
+      <div className="relative mx-auto aspect-9/16 w-auto min-h-0 max-w-full flex-1 overflow-hidden rounded-2xl bg-black sm:max-w-sm">
         {prevEntry ? renderEntry(prevEntry, { active: false }) : null}
         <div
           key={entry.key}
@@ -140,7 +144,7 @@ export function AnimaticPlayer({ project, onClose }: AnimaticPlayerProps) {
         />
       </div>
 
-      <div className="mx-auto flex w-full max-w-sm items-center gap-2">
+      <div className="mx-auto flex w-full max-w-sm shrink-0 flex-wrap items-center justify-center gap-2">
         <Button size="sm" onClick={() => (finished ? restart() : setIsPlaying((p) => !p))}>
           {finished ? 'Replay' : isPlaying ? 'Pause' : 'Play'}
         </Button>

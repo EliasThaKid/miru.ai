@@ -1302,21 +1302,24 @@ export default function Home() {
           }
         />
 
-        {/* Without this, locked controls just look broken. Fixed rather than in flow at lg+ so
-            it can't disturb the compose column or the review layout; below lg it stays in flow
-            instead, where fixed would overlap the mobile bar. */}
-        {demoMode ? (
-          <div className="pointer-events-none z-50 flex shrink-0 justify-center px-4 py-3 lg:fixed lg:inset-x-0 lg:top-0">
-            <div className="pointer-events-auto flex max-w-full flex-col items-center gap-1 rounded-2xl border border-white/15 bg-black/80 px-4 py-1.5 text-center text-[12px] text-[var(--muted-foreground)] backdrop-blur sm:flex-row sm:gap-3 sm:rounded-full sm:text-left">
-              <span>Demo — a finished scene, read-only. Play it, browse the shots, export it.</span>
-              <a href="/sign-up" className="text-foreground underline underline-offset-2">
-                Make your own
-              </a>
-            </div>
-          </div>
-        ) : null}
-
         <main className="flex min-h-0 min-w-0 flex-1 flex-col">
+          {/* Without this, locked controls just look broken. Lives INSIDE main and in flow at
+              every width. It used to be `fixed top-0`, which laid the pill straight over the
+              storyboard toolbar and made "Watch sequence ▶" — the demo's whole point —
+              unclickable. It must stay inside this column rather than beside it: the outer
+              wrapper is lg:flex-row, so a sibling here becomes a full-height row child and the
+              rounded pill renders as a giant ellipse next to the rail. */}
+          {demoMode ? (
+            <div className="pointer-events-none z-50 flex shrink-0 justify-center px-4 py-3">
+              <div className="pointer-events-auto flex max-w-full flex-col items-center gap-1 rounded-2xl border border-white/15 bg-black/80 px-4 py-1.5 text-center text-[12px] text-[var(--muted-foreground)] backdrop-blur sm:flex-row sm:gap-3 sm:rounded-full sm:text-left">
+                <span>Demo — a finished scene, read-only. Play it, browse the shots, export it.</span>
+                <a href="/sign-up" className="text-foreground underline underline-offset-2">
+                  Make your own
+                </a>
+              </div>
+            </div>
+          ) : null}
+
           <AnimatePresence initial={false} mode="wait">
             {mode !== 'reviewing' ? (
               <motion.div
