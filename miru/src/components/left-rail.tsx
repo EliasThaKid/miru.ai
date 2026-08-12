@@ -171,12 +171,66 @@ export function RailContent({
   )
 }
 
+// Shared by both collapse handles. Small, quiet, and out of the way — this is chrome, not
+// an action.
+const HANDLE =
+  'flex h-7 w-7 items-center justify-center rounded text-[13px] text-[var(--text-tertiary)] transition-colors hover:bg-white/5 hover:text-foreground'
+
+export function CollapseHandle({
+  side,
+  collapsed,
+  onToggle,
+  label,
+  className = '',
+}: {
+  side: 'left' | 'right'
+  collapsed: boolean
+  onToggle: () => void
+  label: string
+  className?: string
+}) {
+  // Point the chevron at the motion it causes, not at the panel it belongs to.
+  const glyph = (side === 'left') === collapsed ? '›' : '‹'
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-label={label}
+      aria-expanded={!collapsed}
+      title={label}
+      className={`${HANDLE} ${className}`}
+    >
+      {glyph}
+    </button>
+  )
+}
+
 // Desktop shell. Gated at lg (1024px), not md: review's fixed chrome is 640px wide, so at
 // md the canvas would still only get 128px. Below lg the same RailContent renders in
-// MobileBar's drawer.
-export function LeftRail(props: LeftRailProps) {
+// MobileBar's drawer, which has its own dismissal — so the collapse handle is lg-only too.
+export function LeftRail({
+  collapsed,
+  onToggleCollapsed,
+  ...props
+}: LeftRailProps & { collapsed: boolean; onToggleCollapsed: () => void }) {
+  if (collapsed) {
+    return (
+      <aside className="sticky top-0 hidden h-svh w-10 shrink-0 flex-col items-center border-r border-white/10 py-6 lg:flex">
+        <CollapseHandle side="left" collapsed onToggle={onToggleCollapsed} label="Expand sidebar" />
+      </aside>
+    )
+  }
   return (
+    // `sticky` is a positioned value, so it anchors the absolutely positioned handle. The
+    // rail's top-right is empty next to the SCENELAB mark, so nothing needs to move for it.
     <aside className="sticky top-0 hidden h-svh w-[248px] shrink-0 flex-col gap-8 overflow-y-auto border-r border-white/10 px-5 py-6 lg:flex">
+      <CollapseHandle
+        side="left"
+        collapsed={false}
+        onToggle={onToggleCollapsed}
+        label="Collapse sidebar"
+        className="absolute top-5 right-3"
+      />
       <RailContent {...props} />
     </aside>
   )

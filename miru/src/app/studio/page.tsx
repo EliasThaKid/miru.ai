@@ -24,7 +24,7 @@ import { refineCharacterDescription, refineSettingDescription } from '@/app/acti
 import { AnimaticPlayer } from '@/components/animatic-player'
 import { HeroCanvas } from '@/components/hero-canvas'
 import { Inspector } from '@/components/inspector'
-import { LeftRail } from '@/components/left-rail'
+import { CollapseHandle, LeftRail } from '@/components/left-rail'
 import { MobileBar } from '@/components/mobile-bar'
 import { ReviewStrip, type JointStatus, type ReviewSelection, type SlotStatus } from '@/components/review-strip'
 import { Button } from '@/components/ui/button'
@@ -67,6 +67,10 @@ const FALLBACK_TOKEN_COSTS: TokenCosts = { still: 1, clip: 8, bridge: 10 }
 // How many clips may be in flight at once during a hosted Animate All. See runAnimateAll for
 // why this is small rather than "as many as fal will take".
 const ANIMATE_CONCURRENCY = 3
+
+// Desktop-only view preference (rail/inspector collapsed). Deliberately separate from the
+// project storage key so clearing one never disturbs the other.
+const UI_PREFS_KEY = 'scenelab:ui:v1'
 
 const EMPTY_PROJECT: Project = {
   id: '',
@@ -154,6 +158,36 @@ export default function Home() {
 
   const reduceMotion = useReducedMotion() ?? false
   const isDesktop = useIsDesktop()
+
+  // Desktop rail/inspector collapse. Purely a viewing preference, so it lives in its own
+  // localStorage key rather than going through project-store — it is not project data and
+  // must not follow a scene from one device to another as if it were.
+  const [railCollapsed, setRailCollapsed] = useState(false)
+  const [inspectorCollapsed, setInspectorCollapsed] = useState(false)
+  const uiPrefsLoaded = useRef(false)
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(UI_PREFS_KEY)
+      if (raw) {
+        const prefs = JSON.parse(raw)
+        setRailCollapsed(!!prefs.rail)
+        setInspectorCollapsed(!!prefs.inspector)
+      }
+    } catch {
+      // A corrupt pref must never keep the editor from opening.
+    }
+    uiPrefsLoaded.current = true
+  }, [])
+  useEffect(() => {
+    // Skip the first pass, or the defaults would overwrite the stored prefs before the
+    // read above has applied them.
+    if (!uiPrefsLoaded.current) return
+    try {
+      localStorage.setItem(UI_PREFS_KEY, JSON.stringify({ rail: railCollapsed, inspector: inspectorCollapsed }))
+    } catch {
+      // Private mode / quota — collapsing still works for this session.
+    }
+  }, [railCollapsed, inspectorCollapsed])
 
   // Fresh project reads inside long-running async loops (the sequential render queue).
   const projectRef = useRef(project)
@@ -1272,6 +1306,8 @@ export default function Home() {
           onOpenScene={handleOpenScene}
           onNewScene={handleNewScene}
           generating={anyGenerating}
+          collapsed={railCollapsed}
+          onToggleCollapsed={() => setRailCollapsed((c) => !c)}
         />
 
         <MobileBar
@@ -1715,19 +1751,42 @@ export default function Home() {
                     never overlaps the thumbnail rail. Hidden while the animatic is playing. */}
                 {/* Rendered only on desktop — deliberately not `hidden lg:block`, which would
                     still mount a second Inspector. Below lg the same node lives in the mobile
-                    bar's bottom sheet. */}
+                    bar's bottom sheet, which is why the collapse handle is desktop-only. */}
                 {inspectorLive && isDesktop ? (
-                  // Inert in demo mode: the inspector is where every edit and every paid
-                  // generate button lives. Selecting moments in the strip still works, so the
-                  // panel keeps showing each shot's details — just not changing them.
-                  <div
-                    inert={demoMode}
-                    className={`h-svh min-h-0 shrink-0 overflow-y-auto overflow-x-hidden border-l border-white/10 px-5 py-6 ${
-                      demoMode ? 'opacity-60' : ''
-                    }`}
-                  >
-                    {inspectorNode}
-                  </div>
+                  inspectorCollapsed ? (
+                    <div className="flex h-svh w-10 shrink-0 flex-col items-center border-l border-white/10 py-6">
+                      <CollapseHandle
+                        side="right"
+                        collapsed
+                        onToggle={() => setInspectorCollapsed(false)}
+                        label="Expand inspector"
+                      />
+                    </div>
+                  ) : (
+                    // The handle sits outside the scroll container so it stays put while the
+                    // panel scrolls; the extra top padding is what keeps it off the SHOT row's
+                    // ◀ ▶ reorder buttons.
+                    <div className="relative flex h-svh min-h-0 shrink-0 flex-col border-l border-white/10">
+                      <CollapseHandle
+                        side="right"
+                        collapsed={false}
+                        onToggle={() => setInspectorCollapsed(true)}
+                        label="Collapse inspector"
+                        className="absolute top-4 right-3 z-10"
+                      />
+                      {/* Inert in demo mode: the inspector is where every edit and every paid
+                          generate button lives. Selecting moments in the strip still works, so
+                          the panel keeps showing each shot's details — just not changing them. */}
+                      <div
+                        inert={demoMode}
+                        className={`min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-5 pt-14 pb-6 ${
+                          demoMode ? 'opacity-60' : ''
+                        }`}
+                      >
+                        {inspectorNode}
+                      </div>
+                    </div>
+                  )
                 ) : null}
               </motion.div>
             )}
